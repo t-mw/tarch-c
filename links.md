@@ -13,3 +13,7 @@
 ## Language Features
 
 - [Emulating OO functionality in C](http://nullprogram.com/blog/2014/10/21/)
+
+## Opinions
+
+- http://glitterbombg.com/blog/posts/fisherboy-postmortem

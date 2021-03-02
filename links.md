@@ -17,3 +17,8 @@
 ## Opinions
 
 - http://glitterbombg.com/blog/posts/fisherboy-postmortem
+
+## Example Projects
+
+- [pacman (sokol)](https://github.com/floooh/pacman.c/)
+- [rizz (sx)](https://github.com/septag/rizz)

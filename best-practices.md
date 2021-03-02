@@ -2,11 +2,10 @@
 
 ## Style
 
-- Lower snake case for variable names, function names and function-like macros.
 - Upper snake case for constants, including enum members.
-- Pascal case for types.
+- Lower snake case for everything else.
 - Fully qualify enums (no typedefs).
-- Indent with two spaces.
+- Indent with four spaces.
 - Free function suffixes:
   - `*_new`: allocate with automatic storage
   - `*_create`: allocate with allocated storage and initialize

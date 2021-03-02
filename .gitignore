@@ -1,0 +1,6 @@
+.DS_Store
+.redo
+.idea
+build
+cmake-build-*
+compile_commands.json

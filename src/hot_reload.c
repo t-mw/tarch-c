@@ -96,7 +96,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
           context->state = context->api.create(alloc, host_state);
         }
 
-        TARCH_LOG("hot_reload", "Reloading library");
+        TARCH_DBG_LOG("hot_reload", "Reloading library");
         context->api.reload(context->state, host_state);
       } else {
         dlclose(context->handle);

@@ -75,7 +75,7 @@ static bool game_handle_event(struct GameState* state, void const* arg,
   sx_unused(host_state);
 
   char* event = (char*)arg;
-  TARCH_LOG("game_state", "Handling event: %s", event);
+  TARCH_DBG_LOG("game_state", "Handling event: %s", event);
   game_state_handle_event(state, event);
 
   return true;

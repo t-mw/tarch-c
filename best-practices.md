@@ -4,7 +4,7 @@
 
 - Upper snake case for constants, including enum members.
 - Lower snake case for everything else.
-- Fully qualify enums (no typedefs).
+- Fully qualify structs and enums (no typedefs).
 - Indent with four spaces.
 - Free function suffixes:
   - `*_new`: allocate with automatic storage

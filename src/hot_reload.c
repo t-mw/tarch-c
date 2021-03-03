@@ -1,5 +1,4 @@
 #include "hot_reload.h"
-#include "game_api.h"
 
 #include <sx/os.h>
 #include <tarch/tarch.h>
@@ -17,39 +16,46 @@ struct HotReloadContext {
   struct GameState* state;
 };
 
-struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc)
+struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc,
+                                                   struct HostState* host_state)
 {
   struct HotReloadContext* context = sx_calloc(alloc, sizeof(struct HotReloadContext));
-#if !TARCH_ENABLE_HOTRELOAD
+#if TARCH_ENABLE_HOTRELOAD
+  sx_unused(host_state);
+#else
   context->api = GAME_API;
-  context->state = GAME_API.create(alloc);
+  context->state = GAME_API.create(alloc, host_state);
 #endif
   return context;
 }
 
-bool hot_reload_context_handle_event(struct HotReloadContext* context, void* arg)
+bool hot_reload_context_handle_event(struct HotReloadContext* context, void* arg,
+                                     struct HostState* host_state)
 {
-  return context->api.handle_event(context->state, arg);
+  return context->api.handle_event(context->state, arg, host_state);
 }
 
-void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* context)
+void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* context,
+                                struct HostState* host_state)
 {
 #if TARCH_ENABLE_HOTRELOAD
   if (context->handle) {
-    context->api.destroy(alloc, context->state);
+    context->api.destroy(alloc, context->state, host_state);
     context->state = NULL;
     dlclose(context->handle);
     context->handle = NULL;
     context->id = 0;
   }
 #else
-  context->api.destroy(alloc, context->state);
+  context->api.destroy(alloc, context->state, host_state);
   context->state = NULL;
 #endif
+  sx_free(alloc, context);
 }
 
 /* http://nullprogram.com/blog/2014/12/23/ */
-void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context, char* exe_path)
+void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
+                struct HostState* host_state, char* exe_path)
 {
 #if TARCH_ENABLE_HOTRELOAD
   struct stat attr;
@@ -67,7 +73,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context, char* e
 
   if (context->id != attr.st_ino) {
     if (context->handle) {
-      context->api.unload(context->state);
+      context->api.unload(context->state, host_state);
       dlclose(context->handle);
     }
 
@@ -82,11 +88,11 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context, char* e
         context->api = *api;
 
         if (context->state == NULL) {
-          context->state = context->api.create(alloc);
+          context->state = context->api.create(alloc, host_state);
         }
 
         TARCH_LOG("hot_reload", "Reloading library");
-        context->api.reload(context->state);
+        context->api.reload(context->state, host_state);
       } else {
         dlclose(context->handle);
         context->handle = NULL;
@@ -101,6 +107,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context, char* e
 #else
   sx_unused(alloc);
   sx_unused(context);
+  sx_unused(host_state);
   sx_unused(exe_path);
 #endif
 }

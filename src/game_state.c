@@ -1,5 +1,11 @@
 #include "game_api.h"
+#include "host_state.h"
 
+#include <sokol/sokol_app.h>
+#include <sokol/sokol_audio.h>
+#include <sokol/sokol_gfx.h>
+#include <sokol/sokol_glue.h>
+#include <sokol/sokol_time.h>
 #include <sx/sx.h>
 #include <tarch/tarch.h>
 
@@ -18,30 +24,51 @@ static void game_state_discard(struct GameState* state)
   sx_unused(state);
 }
 
-static struct GameState* game_create(sx_alloc const* alloc)
+static void game_state_handle_event(struct GameState* state, char* event)
 {
+  sx_unused(state);
+  sx_unused(event);
+}
+
+static struct GameState* game_create(sx_alloc const* alloc, struct HostState* host_state)
+{
+  sx_unused(host_state);
+
   struct GameState* state = sx_calloc(alloc, sizeof(*state));
   game_state_init(state);
   return state;
 }
-static void game_destroy(sx_alloc const* alloc, struct GameState* state)
+
+static void game_destroy(sx_alloc const* alloc, struct GameState* state,
+                         struct HostState* host_state)
 {
+  sx_unused(host_state);
+
   game_state_discard(state);
   sx_free(alloc, state);
 }
-static void game_reload(struct GameState* state)
+
+static void game_reload(struct GameState* state, struct HostState* host_state)
 {
   sx_unused(state);
+  sx_unused(host_state);
 }
-static void game_unload(struct GameState* state)
+
+static void game_unload(struct GameState* state, struct HostState* host_state)
 {
   sx_unused(state);
+  sx_unused(host_state);
 }
-static bool game_handle_event(struct GameState* state, void const* arg)
+
+static bool game_handle_event(struct GameState* state, void const* arg,
+                              struct HostState* host_state)
 {
-  sx_unused(state);
-  sx_unused(arg);
-  TARCH_LOG("game_state", "Handling event: %s", (char*)arg);
+  sx_unused(host_state);
+
+  char* event = (char*)arg;
+  TARCH_LOG("game_state", "Handling event: %s", event);
+  game_state_handle_event(state, event);
+
   return true;
 }
 

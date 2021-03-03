@@ -153,7 +153,6 @@ typedef struct sx_alloc sx_alloc;
 typedef struct {
   size_t      length;
   size_t      capacity;
-  void      * hash_table;
   ptrdiff_t   temp;
 } sx__array_header;
 
@@ -185,8 +184,8 @@ SX_INLINE void* sx__arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min
     // if (num_prev < 65536) if (a) prev_allocs[num_prev++] = (int *) ((char *) a+1);
     // if (num_prev == 2201)
     //  num_prev = num_prev;
-    b = sx__realloc(alloc, (a) ? sx__header(a) : 0, elemsize * min_cap + sizeof(sx__array_header), 0,
-                    file, func, line);
+    b = sx__realloc(alloc, (a) ? sx__header(a) : 0, elemsize * min_cap + sizeof(sx__array_header),
+                    0, file, func, line);
 
     if (!b) {
         sx_out_of_memory();
@@ -197,7 +196,6 @@ SX_INLINE void* sx__arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min
     b = (char*)b + sizeof(sx__array_header);
     if (a == NULL) {
         sx__header(b)->length = 0;
-        sx__header(b)->hash_table = 0;
     }
     sx__header(b)->capacity = min_cap;
 

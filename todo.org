@@ -3,3 +3,5 @@
    - Requires https://github.com/floooh/sokol/issues/91 to be completed
    - Store the gfx context in HostState and use it in game_state.c
    - Revert the commit that added this TODO to remove unnecessary code
+** TODO Make PR to merge in sx/array.h changes ported from stb_ds.h
+   - The new version is safe to use with strict aliasing

@@ -16,7 +16,7 @@
 #define TARCH_LOG(tag, ...)                                        \
   do {                                                             \
     static char formatted_msg[256];                                \
-    static char time_str[256];                                     \
+    static char time_str[32];                                      \
     time_t now;                                                    \
     struct tm* timeinfo;                                           \
                                                                    \

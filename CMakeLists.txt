@@ -12,6 +12,15 @@ project(tarch VERSION 0.1 LANGUAGES C)
 
 include_directories(include)
 
+option(TARCH_ENABLE_HOTRELOAD "Enable hot reloading" ON)
+if(TARCH_ENABLE_HOTRELOAD)
+    add_compile_definitions(TARCH_ENABLE_HOTRELOAD=1)
+
+    # Only required when using hot-reloading, to link the same static libraries into both
+    # the reloadable module and runner application.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 option(SX_BUILD_TESTS "" OFF)
 add_subdirectory(src/sx)
 
@@ -50,9 +59,31 @@ else()
   add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-gnu -Wno-c++98-compat)
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    add_executable(game WIN32 src/main.c)
+file(GLOB C_SOURCES src/*.c)
+set(DEPS sx sokol)
+if(TARCH_ENABLE_HOTRELOAD)
+  list(REMOVE_ITEM C_SOURCES src/main.c src/hot_reload.c)
+  add_library(game_tmp MODULE ${C_SOURCES})
+  target_link_libraries(game_tmp PRIVATE ${DEPS})
+
+  # rename at end of build to prevent hot reload from loading partially built library
+  add_custom_command(
+      TARGET game_tmp POST_BUILD COMMAND ${CMAKE_COMMAND} -E rename
+      $<TARGET_FILE:game_tmp>
+      $<TARGET_FILE_PREFIX:game_tmp>game$<TARGET_FILE_SUFFIX:game_tmp>
+  )
+
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+      add_executable(runner WIN32 src/main.c)
+  else()
+      add_executable(runner src/main.c)
+  endif()
+  target_sources(runner PRIVATE src/hot_reload.c)
 else()
-    add_executable(game src/main.c)
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+      add_executable(runner WIN32 ${C_SOURCES})
+  else()
+      add_executable(runner ${C_SOURCES})
+  endif()
 endif()
-target_link_libraries(game PRIVATE sx sokol)
+target_link_libraries(runner PRIVATE ${DEPS})

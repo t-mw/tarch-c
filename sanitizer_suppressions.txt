@@ -1,0 +1,2 @@
+leak:/usr/lib/dri/radeonsi_dri.so
+leak:/usr/lib/libdrm_amdgpu.so

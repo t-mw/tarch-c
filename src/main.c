@@ -13,7 +13,7 @@ static void init(void);
 static void frame(void);
 static void cleanup(void);
 
-static char** g_argv;
+static char* g_exe_path;
 
 static struct HostState* host_state;
 static struct HotReloadContext* hot_reload_context;
@@ -21,7 +21,7 @@ static struct HotReloadContext* hot_reload_context;
 sapp_desc sokol_main(int argc, char* argv[])
 {
   sx_unused(argc);
-  g_argv = argv;
+  g_exe_path = argv[0];
 
   return (sapp_desc){ .init_cb = init,
                       .frame_cb = frame,
@@ -41,8 +41,7 @@ static void init(void)
 
 static void frame(void)
 {
-  char* exe_path = g_argv[0];
-  hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, exe_path);
+  hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, g_exe_path);
   hot_reload_context_handle_event(hot_reload_context, "frame", host_state);
 
   // run the draw action in the runner binary context until

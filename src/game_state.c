@@ -27,7 +27,16 @@ static void game_state_discard(struct GameState* state)
 static void game_state_handle_event(struct GameState* state, char* event)
 {
   sx_unused(state);
-  sx_unused(event);
+
+  if (strcmp(event, "draw") == 0) {
+    int const canvas_width = sapp_width();
+    int const canvas_height = sapp_height();
+    sg_pass_action const pass_action = { .colors[0] = { .action = SG_ACTION_CLEAR,
+                                                        .value = { 1.0f, 0.0f, 0.0f, 1.0f } } };
+    sg_begin_default_pass(&pass_action, canvas_width, canvas_height);
+    sg_end_pass();
+    sg_commit();
+  }
 }
 
 static struct GameState* game_create(sx_alloc const* alloc, struct HostState* host_state)

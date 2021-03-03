@@ -45,13 +45,9 @@ static void frame(void)
   hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, exe_path);
   hot_reload_context_handle_event(hot_reload_context, "frame", host_state);
 
-  int const canvas_width = sapp_width();
-  int const canvas_height = sapp_height();
-  sg_pass_action const pass_action = { .colors[0] = { .action = SG_ACTION_CLEAR,
-                                                      .value = { 1.0f, 0.0f, 0.0f, 1.0f } } };
-  sg_begin_default_pass(&pass_action, canvas_width, canvas_height);
-  sg_end_pass();
-  sg_commit();
+  // run the draw action in the runner binary context until
+  // https://github.com/floooh/sokol/issues/91 is implemented
+  GAME_API.handle_event(hot_reload_context_get_game_state(hot_reload_context), "draw", host_state);
 }
 
 static void cleanup(void)

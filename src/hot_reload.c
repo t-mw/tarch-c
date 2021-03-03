@@ -16,6 +16,11 @@ struct HotReloadContext {
   struct GameState* state;
 };
 
+struct GameState* hot_reload_context_get_game_state(struct HotReloadContext* context)
+{
+  return context->state;
+}
+
 struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc,
                                                    struct HostState* host_state)
 {

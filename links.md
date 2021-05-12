@@ -16,7 +16,7 @@
 
 ## Opinions
 
-- http://glitterbombg.com/blog/posts/fisherboy-postmortem
+- http://glitterbombg.com/blog/posts/fisherboy-postmortem ([backup](https://github.com/septag/blog/tree/master/posts/fisherboy-postmortem))
 
 ## Example Projects
 

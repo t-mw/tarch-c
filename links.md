@@ -22,3 +22,4 @@
 
 - [pacman (sokol)](https://github.com/floooh/pacman.c/)
 - [rizz (sx)](https://github.com/septag/rizz)
+- [Permafrost RTS engine](https://github.com/eduard-permyakov/permafrost-engine)

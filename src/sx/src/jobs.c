@@ -374,7 +374,7 @@ static void sx__job_process_pending(sx_job_context* ctx)
             int range_end = pending.range_size + (pending.range_reminder > 0 ? 1 : 0);
             --pending.range_reminder;
 
-            sx_array_pop(ctx->pending, i);
+            sx_array_del(ctx->pending, i);
 
             int count = *pending.counter;
             for (int k = 0; k < count; k++) {
@@ -400,7 +400,7 @@ static void sx__job_process_pending_single(sx_job_context* ctx, int index)
     // unlike sx__job_process_pending, only check the specific index to push into job-list
     sx__job_pending pending = ctx->pending[index];
     if (!sx_pool_fulln(ctx->job_pool, *pending.counter)) {
-        sx_array_pop(ctx->pending, index);
+        sx_array_del(ctx->pending, index);
 
         int range_start = 0;
         int range_end = pending.range_size + (pending.range_reminder > 0 ? 1 : 0);

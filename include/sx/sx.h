@@ -106,25 +106,25 @@ SX_API void sx__debug_message(const char* sourcefile, uint32_t line, const char*
 #    if SX_COMPILER_GCC || SX_COMPILER_CLANG
 #        define sx_max(a, b)                  \
             ({                                \
-                __typeof__(a) var__a = (a);       \
-                __typeof__(b) var__b = (b);       \
+                typeof(a) var__a = (a);       \
+                typeof(b) var__b = (b);       \
                 (void)(&var__a == &var__b);   \
                 var__a > var__b ? var__a : var__b; \
             })
 
 #        define sx_min(a, b)                  \
             ({                                \
-                __typeof__(a) var__a = (a);       \
-                __typeof__(b) var__b = (b);       \
+                typeof(a) var__a = (a);       \
+                typeof(b) var__b = (b);       \
                 (void)(&var__a == &var__b);   \
                 var__a < var__b ? var__a : var__b; \
             })
 
 #        define sx_clamp(v_, min_, max_)                        \
             ({                                                  \
-                __typeof__(v_) var__v = (v_);                       \
-                __typeof__(min_) var__min = (min_);                 \
-                __typeof__(max_) var__max = (max_);                 \
+                typeof(v_) var__v = (v_);                       \
+                typeof(min_) var__min = (min_);                 \
+                typeof(max_) var__max = (max_);                 \
                 (void)(&var__min == &var__max);                 \
                 var__v = var__v < var__max ? var__v : var__max; \
                 var__v > var__min ? var__v : var__min;          \

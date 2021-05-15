@@ -169,7 +169,7 @@ static inline void sx__job_remove_list(sx__job** pfirst, sx__job** plast, sx__jo
     node->prev = node->next = NULL;
 }
 
-typedef struct sx__job_select_result {
+typedef struct sx__job_select_result {  
     sx__job* job;
     bool waiting_list_alive;
 } sx__job_select_result;
@@ -178,7 +178,7 @@ typedef struct sx__job_select_result {
 static sx__job_select_result sx__job_select(sx_job_context* ctx, uint32_t tid, uint32_t tags)
 {
     sx__job_select_result r = { 0 };
-
+    
     sx_lock(&ctx->job_lk);
     for (int pr = 0; pr < SX_JOB_PRIORITY_COUNT; pr++) {
         sx__job* node = ctx->waiting_list[pr];
@@ -234,7 +234,7 @@ static void sx__job_selector_main_thrd(sx_fiber_transfer transfer)
     }
 
     // before returning, set selector to NULL, so we know that we have to recreate the fiber
-    tdata->selector_fiber = NULL;
+    tdata->selector_fiber = NULL;       
     sx_fiber_switch(transfer.from, transfer.user);
 }
 
@@ -356,7 +356,7 @@ sx_job_t sx_job_dispatch(sx_job_context* ctx, int count, sx_job_cb* callback, vo
                                     .priority = priority,
                                     .tags = tags };
         sx_array_push(ctx->alloc, ctx->pending, pending);
-        SX_PRAGMA_DIAGNOSTIC_POP()
+        SX_PRAGMA_DIAGNOSTIC_POP()   
     }
     sx_unlock(&ctx->job_lk);
 
@@ -374,7 +374,7 @@ static void sx__job_process_pending(sx_job_context* ctx)
             int range_end = pending.range_size + (pending.range_reminder > 0 ? 1 : 0);
             --pending.range_reminder;
 
-            sx_array_del(ctx->pending, i);
+            sx_array_pop(ctx->pending, i);
 
             int count = *pending.counter;
             for (int k = 0; k < count; k++) {
@@ -400,7 +400,7 @@ static void sx__job_process_pending_single(sx_job_context* ctx, int index)
     // unlike sx__job_process_pending, only check the specific index to push into job-list
     sx__job_pending pending = ctx->pending[index];
     if (!sx_pool_fulln(ctx->job_pool, *pending.counter)) {
-        sx_array_del(ctx->pending, index);
+        sx_array_pop(ctx->pending, index);
 
         int range_start = 0;
         int range_end = pending.range_size + (pending.range_reminder > 0 ? 1 : 0);

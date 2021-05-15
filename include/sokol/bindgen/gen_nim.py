@@ -19,13 +19,13 @@ module_names = {
 }
 
 c_source_paths = {
-    'sg_':      'sokol-zig/src/sokol/c/sokol_app_gfx.c',
-    'sapp_':    'sokol-zig/src/sokol/c/sokol_app_gfx.c',
-    'stm_':     'sokol-zig/src/sokol/c/sokol_time.c',
-    'saudio_':  'sokol-zig/src/sokol/c/sokol_audio.c',
-    'sgl_':     'sokol-zig/src/sokol/c/sokol_gl.c',
-    'sdtx_':    'sokol-zig/src/sokol/c/sokol_debugtext.c',
-    'sshape_':  'sokol-zig/src/sokol/c/sokol_shape.c',
+    'sg_':      'sokol-nim/src/sokol/c/sokol_gfx.c',
+    'sapp_':    'sokol-nim/src/sokol/c/sokol_app.c',
+    'stm_':     'sokol-nim/src/sokol/c/sokol_time.c',
+    'saudio_':  'sokol-nim/src/sokol/c/sokol_audio.c',
+    'sgl_':     'sokol-nim/src/sokol/c/sokol_gl.c',
+    'sdtx_':    'sokol-nim/src/sokol/c/sokol_debugtext.c',
+    'sshape_':  'sokol-nim/src/sokol/c/sokol_shape.c',
 }
 
 func_name_ignores = [
@@ -266,7 +266,7 @@ def as_extern_c_arg_type(arg_type, prefix):
     elif is_const_void_ptr(arg_type):
         return "pointer"
     elif is_string_ptr(arg_type):
-        return "ptr uint8"
+        return "cstring"
     elif is_const_struct_ptr(arg_type):
         return f"ptr {as_nim_struct_type(extract_ptr_type(arg_type), prefix)}"
     elif is_prim_ptr(arg_type):
@@ -454,8 +454,11 @@ def gen_enum(decl, prefix):
     hasForceU32 = False
     hasExplicitValues = False
     for item in decl['items']:
-        if item['name'].endswith("_FORCE_U32"):
+        itemName = item['name']
+        if itemName.endswith("_FORCE_U32"):
             hasForceU32 = True
+        elif itemName.endswith("_NUM"):
+            continue
         else:
             if 'value' in item:
                 hasExplicitValues = True
@@ -553,13 +556,7 @@ def gen(c_header_path, c_prefix, dep_c_prefixes):
 
     ## include extensions in generated code
     l("# Nim-specific API extensions")
-    l(f"include ext/{ir['module']}")
-
-    ## copy extensions into generated code
-    # ext_path = f"sokol-nim/src/sokol/ext/{ir['module']}.nim"
-    # if os.path.isfile(ext_path):
-    #     with open(ext_path, 'r') as f_ext:
-    #         out_lines += f_ext.read()
+    l(f"include nim/{ir['module']}")
 
     with open(output_path, 'w', newline='\n') as f_outp:
         f_outp.write(out_lines)

@@ -1,5 +1,66 @@
 ## Updates
 
+- **12-Apr-2021**: Minor new feature in sokol_app.h: mouse buttons are now
+  also reported as modifier flags in most input events (similar to the
+  Ctrl-, Alt-, Shift- and Super-key modifiers). This lets you quickly check
+  what mouse buttons are currently pressed in any input event without having
+  to keep track of pressed mouse buttons yourself. This is implemented in the following
+  sokol_app.h backends: Win32, UWP, Emscripten, X11 and macOS. Example
+  code is in the [events-sapp.cc](https://floooh.github.io/sokol-html5/events-sapp.html) sample
+
+- **10-Apr-2021**: followup fixes from yesterday: custom icon support on macOS
+  has been added (since macOS has no regular window icons, the dock icon is
+  updated instead), and a bugfix in the internal helper which select the
+  best matching candidate image (this actually always selected the first
+  candidate image)
+
+- **09-Apr-2021**: sokol_app.h now allows to programmatically set the window
+  icon in the Win32, X11 and HTML5 backends. Search for "WINDOW ICON SUPPORT"
+  in sokol_app.h for documentation, and see the new
+  [icon sample](https://floooh.github.io/sokol-html5/icon-sapp.html) for example code.
+
+- **01-Apr-2021**: some fixes in sokol_app.h's iOS backend:
+    - In the iOS Metal backend, high-dpi vs low-dpi works again. Some time
+    ago (around iOS 12.x) MTKView started to ignore the contentScaleFactor
+    property, which lead to sokol_app.h always setting up a HighDPI
+    framebuffer even when sapp_desc.high_dpi wasn't set. The fix is to set
+    the MTKView's drawableSize explicitely now.
+    - The iOS GL backend didn't support MSAA multisampling so far, this has
+    been fixed now, but only one MSAA mode (4x) is available, which will be
+    selected when sapp_desc.sample_count is greater than 1.
+
+- **31-Mar-2021**: sokol_audio.h on macOS no longer includes system framework
+  headers (AudioToolbox/AudioToolbox.h), instead the necessary declarations
+  are embedded directly in sokol_audio.h (to get the old behaviour and
+  force inclusion of AudioToolbox/AudioToolbox.h, define
+  ```SAUDIO_OSX_USE_SYSTEM_HEADERS``` before including the sokol_audio.h
+  implementation). This "fix" is both an experiment and an immediate workaround
+  for a current issue in Zig's HEAD version (what will eventually become
+  zig 0.8.0). See this issue for details: https://github.com/ziglang/zig/issues/8360).
+  The experiment is basically to see whether this approach generally makes sense
+  (replacing system headers with embedded declarations, so that the sokol headers
+  only depend on C standard library headers). This approach might
+  simplify cross-compilation and integration with other languages than C and C++.
+
+- **20-Mar-2021**: The Windows-specific OpenGL loader, and the platform-specific
+GL header includes have been moved from sokol_app.h to sokol_gfx.h. This means:
+  - In general, the sokol_gfx.h implementation can now simply be included
+    without having to include other headers which provide the GL API declarations
+    first (e.g. when sokol_gfx.h is used without sokol_app.h, you don't need to
+    use a GL loader, or include the system-specific GL headers yourself).
+  - When sokol_gfx.h is used together with sokol_app.h, the include order
+    for the implementations doesn't matter anymore (until now, the sokol_app.h
+    implementation had to be included before the sokol_gfx.h implementation).
+  - The only "downside" (not really a downside) is that sokol_gfx.h now has
+    platform detection ifdefs to include the correct GL headers for a given
+    platform. Until now this problem was "delegated" to the library user.
+  - The old macro **SOKOL_WIN32_NO_GL_LOADER** has been removed, and replaced
+    with a more general **SOKOL_EXTERNAL_GL_LOADER**. Define this before
+    including the sokol_gfx.h implementation if you are using your own GL
+    loader or provide the GL API declarations in any other way. In this case,
+    sokol_gfx.h will not include any platform GL headers, and the embedded
+    Win32 GL loader will be disabled.
+
 - **22-Feb-2021**: Mouse input latency in sokol_app.h's macOS backend has been
   quite significantly reduced, please see the detailed explanation [in this
   PR](https://github.com/floooh/sokol/pull/483). Many thanks to @randrew for

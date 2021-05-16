@@ -57,7 +57,7 @@ foreach (file ${shader_files})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
 endforeach ()
 
-add_library(sokol STATIC src/sokol.c)
+add_library(sokol STATIC src/tarch/sokol.c)
 # Linux -pthread shenanigans
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -95,7 +95,7 @@ else ()
   add_compile_options(-Wall -Wextra -Werror -Wno-gnu -Wno-c++98-compat)
 endif ()
 
-file(GLOB C_SOURCES src/*.c)
+file(GLOB_RECURSE C_SOURCES src/*.c)
 set(DEPS sx sokol flecs_static)
 if (TARCH_ENABLE_HOTRELOAD)
   list(REMOVE_ITEM C_SOURCES src/main.c src/hot_reload.c)

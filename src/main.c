@@ -1,5 +1,5 @@
-#include "host_state.h"
-#include "hot_reload.h"
+#include "tarch/host_state.h"
+#include "tarch/hot_reload.h"
 
 #include <sokol/sokol_app.h>
 #include <sokol/sokol_audio.h>

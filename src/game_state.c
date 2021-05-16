@@ -1,6 +1,6 @@
-#include "game_api.h"
-#include "host_state.h"
 #include "sokol_state.h"
+#include "tarch/game_api.h"
+#include "tarch/host_state.h"
 
 #include <sokol/sokol_app.h>
 #include <sokol/sokol_audio.h>

@@ -34,12 +34,12 @@ static void game_state_handle_event(sx_alloc const* alloc, struct GameState* sta
 {
   sx_unused(alloc);
 
-  if (strcmp(event.type, "update") == 0) {
-    state->sokol_state.rx += event.dt * 0.6f;
-    state->sokol_state.ry += event.dt * 1.2f;
-  } else if (strcmp(event.type, "init_draw") == 0 && !state->is_sokol_initialized) {
+  if (strcmp(event.type, "init_draw") == 0 && !state->is_sokol_initialized) {
     sokol_state_init(&state->sokol_state);
     state->is_sokol_initialized = true;
+  } else if (strcmp(event.type, "update") == 0) {
+    state->sokol_state.rx += event.dt * 0.6f;
+    state->sokol_state.ry += event.dt * 1.2f;
   } else if (strcmp(event.type, "draw") == 0) {
     sokol_state_draw(&state->sokol_state);
   }

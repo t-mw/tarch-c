@@ -12,6 +12,7 @@
 #  define TARCH_DBG 0
 #endif
 
+#include <stdio.h>
 #include <time.h>
 #define TARCH_LOG(tag, ...)                                        \
   do {                                                             \

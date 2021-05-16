@@ -21,33 +21,33 @@ include(cmake/target_default_compile_options.cmake)
 # (use the manual list to improve ide support)
 
 set(INC
-        ../../include/flecs/addons/bulk.h
-        ../../include/flecs/addons/dbg.h
-        ../../include/flecs/addons/direct_access.h
-        ../../include/flecs/addons/module.h
-        ../../include/flecs/addons/queue.h
-        ../../include/flecs/addons/reader_writer.h
-        ../../include/flecs/addons/snapshot.h
-        ../../include/flecs/addons/stats.h
-        ../../include/flecs/modules/pipeline.h
-        ../../include/flecs/modules/system.h
-        ../../include/flecs/modules/timer.h
-        ../../include/flecs/private/api_defines.h
-        ../../include/flecs/private/api_support.h
-        ../../include/flecs/private/api_types.h
-        ../../include/flecs/private/bitset.h
-        ../../include/flecs/private/entity_index.h
-        ../../include/flecs/private/log.h
-        ../../include/flecs/private/map.h
-        ../../include/flecs/private/sparse.h
-        ../../include/flecs/private/strbuf.h
-        ../../include/flecs/private/switch_list.h
-        ../../include/flecs/private/vector.h
-        ../../include/flecs.h
-        ../../include/flecs/bake_config.h
-        ../../include/flecs/flecs.hpp
-        ../../include/flecs/os_api.h
-        ../../include/flecs/type.h)
+        include/flecs/addons/bulk.h
+        include/flecs/addons/dbg.h
+        include/flecs/addons/direct_access.h
+        include/flecs/addons/module.h
+        include/flecs/addons/queue.h
+        include/flecs/addons/reader_writer.h
+        include/flecs/addons/snapshot.h
+        include/flecs/addons/stats.h
+        include/flecs/modules/pipeline.h
+        include/flecs/modules/system.h
+        include/flecs/modules/timer.h
+        include/flecs/private/api_defines.h
+        include/flecs/private/api_support.h
+        include/flecs/private/api_types.h
+        include/flecs/private/bitset.h
+        include/flecs/private/entity_index.h
+        include/flecs/private/log.h
+        include/flecs/private/map.h
+        include/flecs/private/sparse.h
+        include/flecs/private/strbuf.h
+        include/flecs/private/switch_list.h
+        include/flecs/private/vector.h
+        include/flecs.h
+        include/flecs/bake_config.h
+        include/flecs/flecs.hpp
+        include/flecs/os_api.h
+        include/flecs/type.h)
 
 set(SRC
         src/addons/bulk.c

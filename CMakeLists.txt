@@ -11,6 +11,9 @@ endif()
 project(tarch VERSION 0.1 LANGUAGES C)
 
 include_directories(include)
+include_directories(3rdparty)
+include_directories(3rdparty/flecs/include)
+include_directories(3rdparty/sx/include)
 
 option(TARCH_ENABLE_HOTRELOAD "Enable hot reloading" ON)
 if(TARCH_ENABLE_HOTRELOAD)
@@ -22,9 +25,9 @@ if(TARCH_ENABLE_HOTRELOAD)
 endif()
 
 option(SX_BUILD_TESTS "" OFF)
-add_subdirectory(src/sx)
+add_subdirectory(3rdparty/sx)
 
-add_library(sokol STATIC src/sokol/sokol.c)
+add_library(sokol STATIC src/sokol.c)
 # Linux -pthread shenanigans
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -47,7 +50,7 @@ else()
 endif()
 
 option(FLECS_SHARED_LIBS "" OFF)
-add_subdirectory(src/flecs)
+add_subdirectory(3rdparty/flecs)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED YES)

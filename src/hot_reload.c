@@ -34,10 +34,10 @@ struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc,
   return context;
 }
 
-bool hot_reload_context_handle_event(struct HotReloadContext* context, void* arg,
-                                     struct HostState* host_state)
+bool hot_reload_context_handle_event(sx_alloc const* alloc, struct HotReloadContext* context,
+                                     struct HostState* host_state, void* arg)
 {
-  return context->api.handle_event(context->state, arg, host_state);
+  return context->api.handle_event(alloc, context->state, host_state, arg);
 }
 
 void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* context,
@@ -78,7 +78,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
 
   if (context->id != attr.st_ino) {
     if (context->handle) {
-      context->api.unload(context->state, host_state);
+      context->api.unload(alloc, context->state, host_state);
       dlclose(context->handle);
     }
 
@@ -97,7 +97,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
         }
 
         TARCH_DBG_LOG("hot_reload", "Reloading library");
-        context->api.reload(context->state, host_state);
+        context->api.reload(alloc, context->state, host_state);
       } else {
         dlclose(context->handle);
         context->handle = NULL;

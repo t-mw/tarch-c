@@ -46,14 +46,15 @@ static void frame(void)
 
   // setup gfx resources in runner binary context until
   // https://github.com/floooh/sokol/issues/91 is implemented
-  GAME_API.handle_event(hot_reload_context_get_game_state(hot_reload_context), "init_draw",
-                        host_state);
+  GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context),
+                        host_state, "init_draw");
 
-  hot_reload_context_handle_event(hot_reload_context, "frame", host_state);
+  hot_reload_context_handle_event(sx_alloc_malloc(), hot_reload_context, host_state, "frame");
 
   // run the draw action in the runner binary context until
   // https://github.com/floooh/sokol/issues/91 is implemented
-  GAME_API.handle_event(hot_reload_context_get_game_state(hot_reload_context), "draw", host_state);
+  GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context),
+                        host_state, "draw");
 }
 
 static void cleanup(void)

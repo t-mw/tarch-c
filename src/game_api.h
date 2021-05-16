@@ -21,18 +21,19 @@ struct GameApi {
   /**
    * Called exactly once when the game code is reloaded.
    */
-  void (*reload)(struct GameState* state, struct HostState* host_state);
+  void (*reload)(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state);
 
   /**
    * Called exactly once when the game code is about to be reloaded.
    */
-  void (*unload)(struct GameState* state, struct HostState* host_state);
+  void (*unload)(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state);
 
   /**
    * Called once for each event to be handled.
    * @return true if the program should continue
    */
-  bool (*handle_event)(struct GameState* state, void const* arg, struct HostState* host_state);
+  bool (*handle_event)(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state,
+                       void const* arg);
 };
 
 extern const struct GameApi GAME_API;

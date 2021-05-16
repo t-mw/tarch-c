@@ -17,19 +17,21 @@ struct GameState {
   struct SokolState sokol_state;
 };
 
-static void game_state_init(struct GameState* state)
+static void game_state_init(sx_alloc const* alloc, struct GameState* state)
 {
+  sx_unused(alloc);
   state->is_sokol_initialized = false;
 }
 
-static void game_state_discard(struct GameState* state)
+static void game_state_discard(sx_alloc const* alloc, struct GameState* state)
 {
+  sx_unused(alloc);
   sx_unused(state);
 }
 
-static void game_state_handle_event(struct GameState* state, char* event)
+static void game_state_handle_event(sx_alloc const* alloc, struct GameState* state, char* event)
 {
-  sx_unused(state);
+  sx_unused(alloc);
 
   if (strcmp(event, "frame") == 0) {
     state->sokol_state.rx += 0.01f;
@@ -45,10 +47,11 @@ static void game_state_handle_event(struct GameState* state, char* event)
 
 static struct GameState* game_create(sx_alloc const* alloc, struct HostState* host_state)
 {
+  sx_unused(alloc);
   sx_unused(host_state);
 
   struct GameState* state = sx_calloc(alloc, sizeof(*state));
-  game_state_init(state);
+  game_state_init(alloc, state);
   return state;
 }
 
@@ -57,30 +60,34 @@ static void game_destroy(sx_alloc const* alloc, struct GameState* state,
 {
   sx_unused(host_state);
 
-  game_state_discard(state);
+  game_state_discard(alloc, state);
   sx_free(alloc, state);
 }
 
-static void game_reload(struct GameState* state, struct HostState* host_state)
+static void game_reload(sx_alloc const* alloc, struct GameState* state,
+                        struct HostState* host_state)
 {
+  sx_unused(alloc);
   sx_unused(state);
   sx_unused(host_state);
 }
 
-static void game_unload(struct GameState* state, struct HostState* host_state)
+static void game_unload(sx_alloc const* alloc, struct GameState* state,
+                        struct HostState* host_state)
 {
+  sx_unused(alloc);
   sx_unused(state);
   sx_unused(host_state);
 }
 
-static bool game_handle_event(struct GameState* state, void const* arg,
-                              struct HostState* host_state)
+static bool game_handle_event(sx_alloc const* alloc, struct GameState* state,
+                              struct HostState* host_state, void const* arg)
 {
   sx_unused(host_state);
 
   char* event = (char*)arg;
   TARCH_DBG_LOG("game_state", "Handling event: %s", event);
-  game_state_handle_event(state, event);
+  game_state_handle_event(alloc, state, event);
 
   return true;
 }

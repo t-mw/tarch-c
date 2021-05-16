@@ -56,7 +56,7 @@ set(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointe
 if(MSVC)
   add_compile_options(/W4 /WX)
 else()
-  add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-gnu -Wno-c++98-compat)
+  add_compile_options(-Wall -Wextra -Werror -Wno-gnu -Wno-c++98-compat)
 endif()
 
 file(GLOB C_SOURCES src/*.c)

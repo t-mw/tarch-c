@@ -12,6 +12,11 @@
 #  define TARCH_DBG 0
 #endif
 
+#define TARCH_PRINT_ARR(format, arr)                            \
+  for (size_t i = 0; i < (sizeof(arr) / sizeof(arr[0])); i++) { \
+    printf("%zu: " format "\n", i, arr[i]);                     \
+  }
+
 #include <stdio.h>
 #include <time.h>
 #define TARCH_LOG(tag, ...)                                        \

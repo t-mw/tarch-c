@@ -1,5 +1,6 @@
 #include "game_api.h"
 #include "host_state.h"
+#include "sokol_state.h"
 
 #include <sokol/sokol_app.h>
 #include <sokol/sokol_audio.h>
@@ -12,11 +13,13 @@
 #include <stdio.h>
 
 struct GameState {
+  bool is_sokol_initialized;
+  struct SokolState sokol_state;
 };
 
 static void game_state_init(struct GameState* state)
 {
-  sx_unused(state);
+  state->is_sokol_initialized = false;
 }
 
 static void game_state_discard(struct GameState* state)
@@ -28,14 +31,15 @@ static void game_state_handle_event(struct GameState* state, char* event)
 {
   sx_unused(state);
 
-  if (strcmp(event, "draw") == 0) {
-    int const canvas_width = sapp_width();
-    int const canvas_height = sapp_height();
-    sg_pass_action const pass_action = { .colors[0] = { .action = SG_ACTION_CLEAR,
-                                                        .value = { 1.0f, 0.0f, 0.0f, 1.0f } } };
-    sg_begin_default_pass(&pass_action, canvas_width, canvas_height);
-    sg_end_pass();
-    sg_commit();
+  if (strcmp(event, "frame") == 0) {
+    state->sokol_state.rx += 0.01f;
+    state->sokol_state.ry += 0.02f;
+  }
+  if (strcmp(event, "init_draw") == 0 && !state->is_sokol_initialized) {
+    sokol_state_init(&state->sokol_state);
+    state->is_sokol_initialized = true;
+  } else if (strcmp(event, "draw") == 0) {
+    sokol_state_draw(&state->sokol_state);
   }
 }
 

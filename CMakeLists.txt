@@ -1,6 +1,8 @@
 # https://cliutils.gitlab.io/modern-cmake/
 # https://github.com/floooh/pacman.c/blob/main/CMakeLists.txt
 # https://github.com/septag/rizz/blob/master/CMakeLists.txt
+# https://github.com/floooh/sokol-samples/blob/master/CMakeLists.txt
+# https://github.com/floooh/sokol-samples/blob/master/sapp/CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.7...3.19)
 
@@ -26,6 +28,34 @@ endif()
 
 option(SX_BUILD_TESTS "" OFF)
 add_subdirectory(3rdparty/sx)
+
+if (CMAKE_SYSTEM_NAME STREQUAL Windows)
+    set(sokol_backend SOKOL_D3D11)
+    set(sokol_slang "hlsl4")
+elseif (CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    set(sokol_backend SOKOL_METAL)
+    set(sokol_slang "metal_macos")
+elseif (CMAKE_SYSTEM_NAME STREQUAL Emscripten)
+    set(sokol_backend SOKOL_GLES3)
+    set(sokol_slang "glsl300es:glsl100")
+else ()
+    set(sokol_backend SOKOL_GLCORE33)
+    set(sokol_slang "glsl330")
+endif ()
+add_definitions(-D${sokol_backend})
+
+find_program(SOKOL_SHDC sokol-shdc HINTS ${SOKOL_SHDC_DIR})
+if (NOT SOKOL_SHDC)
+    message(FATAL_ERROR "Could not find sokol-shdc binary")
+endif ()
+
+file(GLOB shader_files "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.glsl")
+
+foreach (file ${shader_files})
+    message(STATUS "Compiling shader ${file}")
+    execute_process(COMMAND ${SOKOL_SHDC} --input ${file} --output ${file}.h --slang ${sokol_slang})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
+endforeach ()
 
 add_library(sokol STATIC src/sokol.c)
 # Linux -pthread shenanigans

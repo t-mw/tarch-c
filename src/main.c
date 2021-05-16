@@ -34,6 +34,7 @@ sapp_desc sokol_main(int argc, char* argv[])
 
 static void init(void)
 {
+  stm_setup();
   sg_setup(&(sg_desc){ .context = sapp_sgcontext() });
 
   host_state = host_state_create(sx_alloc_malloc());
@@ -42,19 +43,26 @@ static void init(void)
 
 static void frame(void)
 {
+  static uint64_t last_time = 0;
+  if (!last_time) {
+    last_time = stm_now();
+  }
+  double dt = stm_sec(stm_laptime(&last_time));
+
   hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, g_exe_path);
 
   // setup gfx resources in runner binary context until
   // https://github.com/floooh/sokol/issues/91 is implemented
   GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context),
-                        host_state, "init_draw");
+                        host_state, (struct Event){ .type = "init_draw", .dt = dt });
 
-  hot_reload_context_handle_event(sx_alloc_malloc(), hot_reload_context, host_state, "frame");
+  hot_reload_context_handle_event(sx_alloc_malloc(), hot_reload_context, host_state,
+                                  (struct Event){ .type = "update", .dt = dt });
 
   // run the draw action in the runner binary context until
   // https://github.com/floooh/sokol/issues/91 is implemented
   GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context),
-                        host_state, "draw");
+                        host_state, (struct Event){ .type = "draw", .dt = dt });
 }
 
 static void cleanup(void)

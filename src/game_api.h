@@ -7,6 +7,11 @@
 struct GameState;
 struct HostState;
 
+struct Event {
+  char* type;
+  double dt;
+};
+
 struct GameApi {
   /**
    * Returns a fresh game state.
@@ -33,7 +38,7 @@ struct GameApi {
    * @return true if the program should continue
    */
   bool (*handle_event)(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state,
-                       void const* arg);
+                       struct Event event);
 };
 
 extern const struct GameApi GAME_API;

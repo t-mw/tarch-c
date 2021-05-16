@@ -35,9 +35,9 @@ struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc,
 }
 
 bool hot_reload_context_handle_event(sx_alloc const* alloc, struct HotReloadContext* context,
-                                     struct HostState* host_state, void* arg)
+                                     struct HostState* host_state, struct Event event)
 {
-  return context->api.handle_event(alloc, context->state, host_state, arg);
+  return context->api.handle_event(alloc, context->state, host_state, event);
 }
 
 void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* context,

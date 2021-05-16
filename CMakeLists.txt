@@ -46,6 +46,9 @@ else()
     endif()
 endif()
 
+option(FLECS_SHARED_LIBS "" OFF)
+add_subdirectory(src/flecs)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED YES)
 set(DEFAULT_BUILD_TYPE "Release")
@@ -60,7 +63,7 @@ else()
 endif()
 
 file(GLOB C_SOURCES src/*.c)
-set(DEPS sx sokol)
+set(DEPS sx sokol flecs_static)
 if(TARCH_ENABLE_HOTRELOAD)
   list(REMOVE_ITEM C_SOURCES src/main.c src/hot_reload.c)
   add_library(game_tmp MODULE ${C_SOURCES})

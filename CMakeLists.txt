@@ -57,7 +57,7 @@ foreach (file ${shader_files})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
 endforeach ()
 
-add_library(sokol STATIC src/tarch/sokol.c)
+add_library(sokol STATIC 3rdparty/sokol.c)
 # Linux -pthread shenanigans
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -96,10 +96,13 @@ else ()
 endif ()
 
 file(GLOB_RECURSE C_SOURCES src/*.c)
+list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/dummy_main\\.c")
+
 set(DEPS sx sokol flecs_static)
 if (TARCH_ENABLE_HOTRELOAD)
-  list(REMOVE_ITEM C_SOURCES src/main.c src/hot_reload.c)
-  add_library(game_tmp MODULE ${C_SOURCES})
+  list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/main\\.c")
+
+  add_library(game_tmp MODULE ${C_SOURCES} src/dummy_main.c)
   target_link_libraries(game_tmp PRIVATE ${DEPS})
 
   # rename at end of build to prevent hot reload from loading partially built library

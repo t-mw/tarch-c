@@ -69,7 +69,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
 
   char game_lib_path[TARCH_MAX_PATH];
   sx_os_path_dirname(game_lib_path, sizeof(game_lib_path), exe_path);
-  sx_os_path_join(game_lib_path, sizeof(game_lib_path), game_lib_path, "libgame" SX_DLL_EXT);
+  sx_os_path_join(game_lib_path, sizeof(game_lib_path), game_lib_path, "libgame.so");
 
   if (stat(game_lib_path, &attr) != 0) {
     fprintf(stderr, "Failed to find dynamic library '%s': %s\n", game_lib_path, strerror(errno));

@@ -13,9 +13,9 @@ endif ()
 project(tarch VERSION 0.1 LANGUAGES C)
 
 include_directories(include)
-include_directories(3rdparty)
-include_directories(3rdparty/flecs/include)
-include_directories(3rdparty/sx/include)
+include_directories(deps)
+include_directories(deps/flecs/include)
+include_directories(deps/sx/include)
 
 option(TARCH_ENABLE_HOTRELOAD "Enable hot reloading" ON)
 if (TARCH_ENABLE_HOTRELOAD)
@@ -27,7 +27,7 @@ if (TARCH_ENABLE_HOTRELOAD)
 endif ()
 
 option(SX_BUILD_TESTS "" OFF)
-add_subdirectory(3rdparty/sx)
+add_subdirectory(deps/sx)
 
 if (CMAKE_SYSTEM_NAME STREQUAL Windows)
     set(sokol_backend SOKOL_D3D11)
@@ -57,7 +57,7 @@ foreach (file ${shader_files})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
 endforeach ()
 
-add_library(sokol STATIC 3rdparty/sokol.c)
+add_library(sokol STATIC deps/sokol.c)
 # Linux -pthread shenanigans
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -80,7 +80,7 @@ else ()
 endif ()
 
 option(FLECS_SHARED_LIBS "" OFF)
-add_subdirectory(3rdparty/flecs)
+add_subdirectory(deps/flecs)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED YES)

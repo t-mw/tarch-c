@@ -79,6 +79,8 @@ else ()
     endif ()
 endif ()
 
+add_library(stb STATIC deps/stb.c)
+
 option(FLECS_SHARED_LIBS "" OFF)
 add_subdirectory(deps/flecs)
 
@@ -98,7 +100,7 @@ endif ()
 file(GLOB_RECURSE C_SOURCES src/*.c)
 list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/dummy_main\\.c")
 
-set(DEPS sx sokol flecs_static)
+set(DEPS sx sokol stb flecs_static)
 if (TARCH_ENABLE_HOTRELOAD)
   list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/main\\.c")
 

@@ -85,7 +85,7 @@ static bool game_handle_event(sx_alloc const* alloc, struct GameState* state,
 {
   sx_unused(host_state);
 
-  TARCH_DBG_LOG("game_state", "Handling event: %s", event.type);
+  DBG_LOG("game_state", "Handling event: %s", event.type);
   game_state_handle_event(alloc, state, event);
 
   return true;

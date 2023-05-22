@@ -34,7 +34,7 @@ sapp_desc sokol_main(int argc, char* argv[])
 
 static void init(void)
 {
-  TARCH_DBG_LOG("main", "Initializing app");
+  DBG_LOG("main", "Initializing app");
 
   stm_setup();
   sg_setup(&(sg_desc){ .context = sapp_sgcontext(),
@@ -89,7 +89,7 @@ static void frame(void)
 
 static void cleanup(void)
 {
-  TARCH_DBG_LOG("main", "Exiting app");
+  DBG_LOG("main", "Exiting app");
 
   sg_shutdown();
 

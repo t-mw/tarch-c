@@ -25,7 +25,7 @@ struct HotReloadContext* hot_reload_context_create(sx_alloc const* alloc,
                                                    struct HostState* host_state)
 {
   struct HotReloadContext* context = sx_calloc(alloc, sizeof(struct HotReloadContext));
-#if TARCH_ENABLE_HOTRELOAD
+#if ENABLE_HOTRELOAD
   sx_unused(host_state);
 #else
   context->api = GAME_API;
@@ -43,7 +43,7 @@ bool hot_reload_context_handle_event(sx_alloc const* alloc, struct HotReloadCont
 void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* context,
                                 struct HostState* host_state)
 {
-#if TARCH_ENABLE_HOTRELOAD
+#if ENABLE_HOTRELOAD
   if (context->handle) {
     context->api.destroy(alloc, context->state, host_state);
     context->state = NULL;
@@ -62,12 +62,12 @@ void hot_reload_context_destroy(sx_alloc const* alloc, struct HotReloadContext* 
 void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
                 struct HostState* host_state, char* exe_path)
 {
-#if TARCH_ENABLE_HOTRELOAD
+#if ENABLE_HOTRELOAD
   struct stat attr;
   void* handle;
   struct GameApi* api;
 
-  char game_lib_path[TARCH_MAX_PATH];
+  char game_lib_path[256];
   sx_os_path_dirname(game_lib_path, sizeof(game_lib_path), exe_path);
   sx_os_path_join(game_lib_path, sizeof(game_lib_path), game_lib_path, "libgame.so");
 
@@ -96,7 +96,7 @@ void hot_reload(sx_alloc const* alloc, struct HotReloadContext* context,
           context->state = context->api.create(alloc, host_state);
         }
 
-        TARCH_DBG_LOG("hot_reload", "Reloading library");
+        DBG_LOG("hot_reload", "Reloading library");
         context->api.reload(alloc, context->state, host_state);
       } else {
         dlclose(context->handle);

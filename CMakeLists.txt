@@ -17,9 +17,9 @@ include_directories(deps)
 include_directories(deps/flecs/include)
 include_directories(deps/sx/include)
 
-option(TARCH_ENABLE_HOTRELOAD "Enable hot reloading" ON)
-if (TARCH_ENABLE_HOTRELOAD)
-    add_compile_definitions(TARCH_ENABLE_HOTRELOAD=1)
+option(ENABLE_HOTRELOAD "Enable hot reloading" ON)
+if (ENABLE_HOTRELOAD)
+    add_compile_definitions(ENABLE_HOTRELOAD=1)
 
     # Only required when using hot-reloading, to link the same static libraries into both
     # the reloadable module and runner application.
@@ -103,7 +103,7 @@ file(GLOB_RECURSE C_SOURCES src/*.c)
 list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/dummy_main\\.c")
 
 set(DEPS sx sokol stb tarch flecs_static)
-if (TARCH_ENABLE_HOTRELOAD)
+if (ENABLE_HOTRELOAD)
   list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/main\\.c")
 
   add_library(game_tmp MODULE ${C_SOURCES} src/dummy_main.c)

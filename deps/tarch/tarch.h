@@ -1,26 +1,24 @@
-#ifndef TARCH_H
-#define TARCH_H
-
-#define TARCH_MAX_PATH 256
+#ifndef H
+#define H
 
 #define var __auto_type
 #define let __auto_type const
 #define defer(x) __attribute__((cleanup(x)))
 
 #ifndef NDEBUG
-#  define TARCH_DBG 1
+#  define DBG 1
 #else
-#  define TARCH_DBG 0
+#  define DBG 0
 #endif
 
-#define TARCH_PRINT_ARR(format, arr)                            \
+#define PRINT_ARR(format, arr)                                  \
   for (size_t i = 0; i < (sizeof(arr) / sizeof(arr[0])); i++) { \
     printf("%zu: " format "\n", i, arr[i]);                     \
   }
 
 #include <stdio.h>
 #include <time.h>
-#define TARCH_LOG(tag, ...)                                        \
+#define LOG(tag, ...)                                              \
   do {                                                             \
     static char formatted_msg[256];                                \
     static char time_str[32];                                      \
@@ -35,10 +33,10 @@
                                                                    \
     printf("%s [%s]: %s\n", time_str, tag, formatted_msg);         \
   } while (0)
-#if TARCH_DBG
-#  define TARCH_DBG_LOG(tag, ...) TARCH_LOG("debug:" tag, __VA_ARGS__)
+#if DBG
+#  define DBG_LOG(tag, ...) LOG("debug:" tag, __VA_ARGS__)
 #else
-#  define TARCH_DBG_LOG(tag, ...)
+#  define DBG_LOG(tag, ...)
 #endif
 
 void* tarch_malloc(size_t size, void* user_data);

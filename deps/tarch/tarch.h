@@ -1,5 +1,4 @@
-#ifndef H
-#define H
+#pragma once
 
 #define var __auto_type
 #define let __auto_type const
@@ -63,5 +62,3 @@ void* tarch_malloc(size_t size, void* user_data);
 void* tarch_calloc(size_t n, size_t s, void* user_data);
 void* tarch_realloc(void* p, size_t s, void* user_data);
 void tarch_free(void* ptr, void* user_data);
-
-#endif

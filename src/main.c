@@ -32,12 +32,28 @@ sapp_desc sokol_main(int argc, char* argv[])
                       .window_title = "tarch" };
 }
 
+static void* tarch_malloc(size_t size, void* user_data)
+{
+  sx_unused(user_data);
+  return sx_malloc(sx_alloc_malloc(), size);
+}
+
+static void tarch_free(void* ptr, void* user_data)
+{
+  sx_unused(user_data);
+  sx_free(sx_alloc_malloc(), ptr);
+}
+
 static void init(void)
 {
   TARCH_DBG_LOG("main", "Initializing app");
 
   stm_setup();
-  sg_setup(&(sg_desc){ .context = sapp_sgcontext() });
+  sg_setup(&(sg_desc){ .context = sapp_sgcontext(),
+                       .allocator = {
+                           .alloc = tarch_malloc,
+                           .free = tarch_free,
+                       } });
 
   host_state = host_state_create(sx_alloc_malloc());
   hot_reload_context = hot_reload_context_create(sx_alloc_malloc(), host_state);

@@ -1,5 +1,836 @@
 ## Updates
 
+- **20-May-2023**: some minor event-related cleanup in sokol_app.h and
+  a touchscreen fix in sokol_imgui.h
+
+    - in the event `SAPP_EVENTTYPE_FILESDROPPED`:
+        - the `sapp_event.modifier` field now contains the active modifier keys
+          at the time of the file drop operations on the platforms macOS, Emscripten
+          and Win32 (on Linux I haven't figured out how this might work with the
+          Xlib API)
+        - on macOS, the `sapp_event.mouse_x/y` fields now contain the window-relative
+          mouse position where the drop happened (this already worked as expected on
+          the other desktop platforms)
+        - on macOS and Linux, the `sapp_event.mouse_dx/dy` fields are now set to zero
+          (this already was the case on Emscripten and Win32)
+    - in the events `SAPP_EVENTTYPE_MOUSE_ENTER` and `SAPP_EVENTTYPE_MOUSE_LEAVE`:
+        - the `sapp_event.mouse_dx/dy` fields are now set to zero, previously this
+          could be a very big value on some desktop platforms
+
+    Many thanks to @castano for the initial PR (https://github.com/floooh/sokol/pull/830)!
+
+    - In sokol_imgui.h, the new io.AddMouseSourceEvent() function in Dear ImGui 1.89.5
+      is called to differentiate between mouse- and touch-events, this makes ui tabs
+      work with a single tap (previously a double-tap on the tab was needed). The code
+      won't break if the ImGui version is older (in this case the function simply isn't called)
+
+
+- **19-May-2023**: _**BREAKING CHANGES**_ in sokol_gfx.h: Render passes are now more 'harmonized'
+  with Metal and WebGPU by exposing a 'store action', and making MSAA resolve attachments
+  explicit. The changes in detail:
+  - A new documentation section `ON RENDER PASSES` has been added to sokol_gfx.h, this
+    gives a much more detailed overview of the new render pass behaviour than this
+    changelog, please make sure to give it a read - especially when you are using
+    MSAA offscreen render passes in your code.
+  - `sg_action` has been renamed to `sg_load_action`.
+  - A new enum `sg_store_action` has been added.
+  - In `sg_pass_action`:
+    - `.action` has been renamed to `.load_action`.
+    - `.value` has been renamed to `.clear_value`.
+    - A new field `.store_action` has been added.
+  - An `sg_image` object with a sample count > 1 no longer contains a second implicit
+    texture for the msaa-resolve operation.
+  - When creating a pass object, there's now an array of `sg_image` objects
+    called `resolve_attachments[]`. When a resolve attachment image is set, the
+    color attachment` at the same slot index must be an image with a sample count >
+    1, and an 'msaa-resolve' operation from the color attachment into the
+    resolve attachment will take place in `sg_end_pass()`.
+  - Pass attachments are now more flexible (there were a couple of gaps where specific
+    image types were not allowed as pass attachments, especially for the depth-stencil-
+    attachment - but this hadn't actually been checked by the validation layer).
+  - Some gaps in the validation layer around images and passes have been tightened up,
+    those usually don't work in one backend or another, but have been ignored so far
+    in the validation layer, mainly:
+    - MSAA images must have num_mipmaps = 1.
+    - 3D images cannot have a sample_count > 1.
+    - 3D images cannot have depth or depth-stencil image formats.
+    - It's not allowed to bind MSAA images as texture.
+    - It's not allowed to bind depth or depth-stencil images as texture.
+    - (I'll see if I can relax some of those restrictions after the WebGPU backend release)
+  - **A lot** of new tests have been added to cover validation layer checks when creating
+    image and pass objects.
+
+  Next up: WebGPU!
+
+- **30-Apr-2023**: GLES2/WebGL1 support has been removed from the sokol headers (now that
+  all browsers support WebGL2, and WebGPU is around the corner I feel like it's finally
+  time to ditch GLES2.
+
+  This is a breaking API change in sokol_gfx.h and sokol_app.h.
+
+  Common changes across all headers:
+  - (breaking change) the `SOKOL_GLES2` config define is no longer accepted and will cause a compile error
+    (use `SOKOL_GLES3` instead)
+  - (breaking change) on Emscripten use the linker option `-s USE_WEBGL2=1`
+  - any embedded GLES shaders have been updated from glsl100 to glsl300es (but glsl100 shaders
+    still work fine with the GLES3 backend)
+
+  Changes in sokol_gfx.h:
+  - (breaking change) the following `sg_features` members have been removed (because those features
+    are no longer optional, but guaranteed across all backends):
+      - `sg_features.instancing`
+      - `sg_features.multiple_render_targets`
+      - `sg_features.msaa_render_targets`
+      - `sg_features.imagetype_3d`
+      - `sg_features.imagetype_array`
+  - (breaking change) the struct `sg_gl_context_desc` and its embedded instance `sg_desc.gl` have been removed
+  - `sg_image` objects with `SG_PIXELFORMAT_DEPTH` or `SG_PIXELFORMAT_DEPTH_STENCIL` with
+    a `sample_count == 1` are now regular textures in the GL backend (this is not true
+    for MSAA depth textures unfortunately, those are still GL render buffer objects)
+  - in the GL backend, `SG_PIXELFORMAT_DEPTH` now resolves to `GL_DEPTH_COMPONENT32F` (same
+    as in the other backends), previously it was `GL_DEPTH_COMPONENT16`
+  - in `sg_begin_pass()`, the GL backend now only uses the new `glClearBuffer*` functions, the
+    old GLES2 clear functions have been removed
+  - in `sg_end_pass()`, the GLES3 backend now invalidates MSAA render buffers after they have
+    been resolved (via `glInvalidateFramebuffer`) - more control over this will come soon-ish
+    when this ticket is implemented: https://github.com/floooh/sokol/issues/816
+  - the instanced rendering functions are no longer wrapped in C macros in the GL backend
+
+  Changes in sokol_app.h:
+  - (breaking) the config item `sapp_desc.gl_force_gles2` has been removed
+  - (breaking) the function `sapp_gles2()` has been removed
+  - any fallback logic from GLES3 to GLES2 has been removed (in the Emscripten, Android and
+    iOS backends)
+
+- **20-Feb-2023**: sokol_gfx.h has a new set of functions to get a 'best-effort'
+  desc struct with the creation parameters of a specific resource object:
+
+    ```c
+    sg_buffer_desc sg_query_buffer_desc(sg_buffer buf);
+    sg_image_desc sg_query_image_desc(sg_image img);
+    sg_shader_desc sg_query_shader_desc(sg_shader shd);
+    sg_pipeline_desc sg_query_pipeline_desc(sg_pipeline pip);
+    sg_pass_desc sg_query_pass_desc(sg_pass pass);
+    ```
+
+  The returned structs will *not* be an exact copy of the desc struct that
+  was used for creation the resource object, instead:
+
+    - references to external data (like buffer and image content or
+      shader sources) will be zeroed
+    - any attributes that have not been kept around internally after
+      creation will be zeroed (the ```sg_shader_desc``` struct is most
+      affected by this, the other structs are fairly complete).
+
+  Calling the functions with an invalid or dangling resource handle
+  will return a completely zeroed struct (thus it may make sense
+  to first check the resource state via ```sg_query_*_state()```)
+
+  Nevertheless, those functions may be useful to get a partially filled out
+  'creation blueprint' for creating similar resources without the need
+  to keep and pass around the original desc structs.
+
+  >MINOR BREAKING CHANGE: the struct members ```sg_image_info.width``` and
+  ```sg_image_info.height``` have been removed, this information is now
+  returned by ```sg_query_image_desc()```.
+
+  PR: https://github.com/floooh/sokol/pull/796, fixes: https://github.com/floooh/sokol/issues/568
+
+- **17-Feb-2023**: sokol_app.h on macOS now has a proper fix for the problem
+  that macOS doesn't send key-up events while the Cmd key is held down.
+  Previously this was handled through a workaround of immediately sending a
+  key-up event after its key-down event if the Cmd key is currently held down
+  to prevent a 'stuck key'. The proper fix is now to install an "event monitor"
+  callback (many thanks to GLFW for finding and implementing the solution).
+  Unfortunately there's no such solution for the Emscripten code path, which
+  also don't send a key-up event while Cmd is pressed on macOS (the workaround
+  there to send a key-up event right on key-down while Cmd is held down to
+  prevent a stuck key is still in place) For more details, see:
+  https://github.com/floooh/sokol/issues/794
+
+- **15-Feb-2023**: A fix in the sokol_gfx.h GL backend: due to a bug in the
+  state cache, the GL backend could only bind a total of
+  SG_MAX_SHADERSTAGE_IMAGES (= 12) when it actually should be twice that amount
+  (12 per shader stage). Note however that the total amount of texture bindings
+  is still internally limited by the GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS
+  runtime variable (~~currently this is not exposed in sg_limits though~~). Many
+  thanks to @allcreater for PR https://github.com/floooh/sokol/pull/787.
+  PS: sg_limits now exposes GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS as
+  ```sg_limits.gl_max_combined_texture_image_units```, and the
+  value can also be inspected via the debug UI in sokol_gfx_imgui.h.
+
+- **13-Feb-2023**: The way logging works has been completely revamped in
+  the sokol headers. UWP support has been removed from sokol_audio.h
+  and sokol_app.h (this also means that the sokol headers no longer contain
+  any C++ code).
+
+  **REQUIRED ACTION**: Since the sokol headers are now completely silent
+  without a logging callback (explanation below), it is highly recommended
+  to use the standard logging callback provided by the new header ```sokol_log.h```.
+  For instance for sokol_gfx.h it looks like this:
+
+    ```c
+    #include "sokol_log.h"
+    //...
+        sg_setup(&(sg_desc){
+            //...
+            .logger.func = slog_func,
+        });
+    ```
+
+  All sokol samples have been updated to use sokol_log.h for logging.
+
+  The former logging callback is now a combined
+  logging- and error-reporting callback, and more information is available
+  to the logging function:
+    - a 'tag string' which identifies the sokol headers, this string
+      is identical with the API prefix (e.g. "sg" for sokol_gfx.h,
+      "sapp" for sokol_app.h etc...)
+    - a numeric log level: 0=panic, 1=error, 2=warning, 3=info
+    - a numeric 'log item id' (think of it as error code, but since
+      not only errors are reported I called it a log item id)
+    - a human readable error message
+    - a source file line number where the log item was reported
+    - the file path of the sokol header
+
+  Log level ```panic``` is special in that it terminates execution inside
+  the log function. When a sokol header issues a panic log message, it means
+  that the problem is so big that execution can not continue. By default,
+  the sokol headers and the standard log function in sokol_log.h call
+  ```abort()``` when a panic log message is issued.
+
+  In debug mode (NDEBUG not defined, or SOKOL_DEBUG defined), a log message
+  (in this case from sokol_spine.h) will look like this:
+
+  ```
+  [sspine][error][id:12] /Users/floh/projects/sokol/util/sokol_spine.h:3472:0:
+      SKELETON_DESC_NO_ATLAS: no atlas object provided in sspine_skeleton_desc.atlas
+  ```
+  The information can be 'parsed' like this:
+    - ```[sspine]```: it's a message from sokol_spine.h
+    - ```[error]```: it's an error
+    - ```[id:12]```: the numeric log item id (associated with ```SKELETON_DESC_NO_ATLAS``` below)
+    - source file path and line number in a compiler-specific format - in some IDEs and terminals
+      this is a clickable link
+    - the line below is the human readable log item id and message
+
+  In release mode (NDEBUG is defined and SOKOL_DEBUG is not defined), log messages
+  are drastically reduced (the reason is to not bloat the executable with all the extra string data):
+
+  ```
+  [sspine][error][id:12][line:3472]
+  ```
+  ...this reduced information still gives all the necessary information to identify the location and type of error.
+
+  A custom logging function must adhere to a few rules:
+
+    - must be re-entrant because it might be called from different threads
+    - must treat **all** provided string pointers as optional (can be null)
+    - don't store the string pointers, copy the string data instead
+    - must not return for log level panic
+
+  A new header ```sokol_log.h``` has been added to provide a standard logging callback implementation
+  which provides logging output on all platforms to stderr and/or platform specific logging
+  facilities. ```sokol_log.h``` only uses fputs() and platform specific logging function instead
+  of fprintf() to preverse some executable size.
+
+  **QUESTION**: Why are the sokol headers now silent, unless a logging callback is installed?
+  This is mainly because a standard logging function which does something meaningful on all
+  platforms (including Windows and Android) isn't trivial. E.g. printing to stderr is not
+  enough. It's better to move that stuff into a centralized place in a separate header,
+  but since the core sokol headers must not (statically) depend on other sokol headers
+  the only solution that made sense was to provide a standard logging function which must
+  be 'registered' as a callback.
+
+- **26-Jan-2023**: Work on SRGB support in sokol_gfx.h has started, but
+  this requires more effort to be really usable. For now, only a new
+  pixel format has been added: SG_PIXELFORMAT_SRGB8A8 (see https://github.com/floooh/sokol/pull/758,
+  many thanks to @allcreater). The sokol-gfx GL backend has a temporary
+  workaround to align behaviour with D3D11 and Metal: automatic SRGB conversion
+  is enabled for offscreen render passes, but disabled for the default
+  framebuffer. A proper fix will require separate work on sokol_app.h to
+  support an SRGB default framebuffer and communicate to sokol-gfx
+  whether the default framebuffer is SRGB enabled or not.
+
+- **24-Jan-2023**: sokol_gfx.h Metal: A minor inconsistency has been fixed in
+  the validation layer and an assert for the function ```sg_apply_uniforms()```
+  which checks the size of the incoming data against the uniform block size.
+  The validation layer and Metal backend did a ```<=``` test while the D3D11
+  and GL backends checked for an exact size match. Both the validation layer
+  and the Metal backend now also check for an exact match. Thanks to @nmr8acme
+  for noticing the issue and providing a PR! (https://github.com/floooh/sokol/pull/776)
+
+- **23-Jan-2023**: A couple more sokol_audio.h updates:
+  - an AAudio backend has been added for Android, and made the default. This
+    means you now need to link with ```aaudio``` instead of ```OpenSLES``` when
+    using sokol_audio.h on Android. The OpenSLES backend code still exists (for
+    now), but must be explicitly selected by compiling the sokol_audio.h
+    implementation with the define ```SAUDIO_ANDROID_SLES``` (e.g. there is
+    no runtime fallback from AAudio to OpenSLES). AAudio is fully supported
+    since Android 8.1. Many thanks to @oviano for the initial AAudio PR
+    (https://github.com/floooh/sokol/pull/484)
+  - in the WebAudio backend, WebAudio is now properly activated on the first
+    input action again on Chrome for Android (at some point activating WebAudio
+    via a ```touchstart``` event stopped working and had to be moved to the
+    ```touchend``` event, see https://github.com/floooh/sokol/issues/701)
+  - audio backend initialization on iOS and macOS is now a bit more fault-tolerant,
+    errors during initialization now properly set sokol_audio.h to 'silent mode'
+    instead of asserting (or in release mode ignoring the error)
+  - ...and some minor general code cleanup things in sokol_audio.h: backend-specific
+    functions now generally have a matching prefix (like ```_saudio_alsa_...()```)
+    for better searchability
+
+- **16-Jan-2023**:
+  - sokol_audio.h android: https://github.com/floooh/sokol/pull/747 has been merged
+    which adds a couple more error checks at OpenSLES startup.
+  - sokol_gfx.h: support for half-float vertex formats has been added via
+    PR https://github.com/floooh/sokol/pull/745
+  - sokol_imgui.h: fixes for Dear ImGui 1.89 deprecations (via PR https://github.com/floooh/sokol/pull/761)
+
+- **15-Jan-2023**: two bugfixes in sokol_app.h and sokol_gfx.h:
+  - sokol_app.h x11: Mouse button events now always return valid mouse
+    coordinates, also when no mouse movement happened yet
+    (fixes https://github.com/floooh/sokol/issues/770)
+  - sokol_gfx.h gl: The GL context is now configured with
+    GL_UNPACK_ALIGNMENT = 1, this should bring texture creation and updating
+    behaviour in line with the other backends for tightly packed texture
+    data that doesn't have a row-pitch with a multiple of 4
+    (fixes https://github.com/floooh/sokol/issues/767)
+
+- **14-Jan-2023**: sokol_app.h x11: a drag'n'drop related bugfix, the
+  XdndFinished reply event was sent with the wrong window handle which
+  confused some apps where the drag operation originated
+  (see https://github.com/floooh/sokol/pull/765#issuecomment-1382750611)
+
+- **16-Dec-2022**: In the sokol_gfx.h Metal backend: A fix for a Metal
+  validation layer error which I just discovered yesterday (seems to be new in
+  macOS 13). When the validation layer is active, and the application window
+  becomes fully obscured, the validation layer throws an error after a short
+  time (for details see: https://github.com/floooh/sokol/issues/762).
+  The reason appears to be that sokol_gfx.h creates a command buffer with
+  'unretained references' (e.g. the command buffer doesn't manage the
+  lifetime of resources used by the commands stored in the buffer). This
+  seems to clash with MTKView's and/or CAMetalLayer's expectations. I fixed
+  this now by creating a second command buffer with 'retained references',
+  which only holds the ```presentDrawable``` command. That way, regular
+  draw commands don't have the refcounting overhead (because they're stored
+  in an unretained-references cmdbuffer), while the drawable surface is
+  still properly lifetime managed (because it's used in a separate command
+  buffer with retained references).
+
+- **15-Dec-2022**: A small but important update in sokol_imgui.h which fixes
+  touch input handling on mobile devices. Many thanks to github user @Xadiant
+  for the bug investigation and [PR](https://github.com/floooh/sokol/pull/760).
+
+- **25-Nov-2022**: Some code cleanup around resource creation and destruction in sokol_gfx.h:
+    - It's now safe to call the destroy, uninit and dealloc functions in any
+      resource state, in general, the functions will do the right thing without
+      assertions getting in the way (there are however new log warnings in some
+      cases though, such as attempting to call an ```sg_dealloc_*()``` function on
+      a resource object that's not in ALLOC state)
+    - A related **minor breaking change**: the ```sg_uninit_*()``` functions now return
+      void instead of bool, this is because ```sg_dealloc_*()``` no longer asserts
+      when called in the wrong resource state
+    - Related internal code cleanup in the backend-agnostic resource creation
+      and cleanup code, better or more consistent function names, etc...
+    - The validation layer can now be disabled in debug mode with a runtime
+      flag during setup: ```sg_desc.disable_validation```. This is mainly useful
+      for test code.
+    - Creating a pass object with invalid image objects now no longer asserts,
+      but instead results in a pass object in FAILED state. In debug mode,
+      the validation layer will still stop at this problem though (it's mostly
+      an 'undefined API behaviour' fix in release mode).
+    - Calling ```sg_shutdown()``` with existing resources in ALLOC state will
+      no longer print a log message about an 'active context mismatch'.
+    - A new header documentation blurb about the two-step resource creation
+      and destruction functions (search for RESOURCE CREATION AND DESTRUCTION IN DETAIL)
+
+- **16-Nov-2022**: Render layer support has been added to sokol_debugtext.h,
+  same general changes as in sokol_gl.h with two new functions:
+  sdtx_layer(layer_id) to select the layer to record text into, and
+  sdtx_draw_layer(layer_id) to draw the recorded text in that layer inside a
+  sokol-gfx render pass. The new sample [debugtext-layers-sapp](https://floooh.github.io/sokol-html5/debugtext-layers-sapp) demonstrates the feature together with
+  sokol-gl.
+
+
+- **11-Nov-2022**: sokol_gl.h has 2 new public API functions which enable
+  layered rendering: sgl_layer(), sgl_draw_layer() (technically it's three
+  functions: there's also sgl_context_draw_layer(), but that's just a variant of
+  sgl_draw_layer()). This allows to 'interleave' sokol-gl rendering
+  with other render operations. The [spine-layers-sapp](https://floooh.github.io/sokol-html5/spine-layers-sapp.html)
+  sample has been updated to use multiple sokol-gl layers.
+
+- **09-Nov-2022**: sokol_gfx.h now allows to add 'commit listeners', these
+  are callback functions which are called from inside sg_commit(). This is
+  mainly useful for libraries which build on top of sokol-gfx to be notified
+  about the start/end point of a frame, which in turn may simplify the public
+  API, or the internal implementation, because the library no longer needs to
+  'guess' when a new frame starts.
+
+  For more details, search for 'COMMIT LISTENERS' in the sokol_gfx.h header.
+
+  This also results in a minor breaking change in sokol_spine.h: The function
+  ```sspine_new_frame()``` has been removed and replaced with an internal commit
+  listener.
+
+  Likewise, sokol_gl.h now uses a commit listener in the implementation, but
+  without changing the public API (the feature will be important for an upcoming
+  sokol-gl feature to support rendering layers, and for this a 'new-frame-function'
+  would have been needed).
+
+- **05-Nov-2022** A breaking change in sokol_fetch.h, and a minor change in
+  sokol_app.h which should only break for very few users:
+  - An ```sfetch_range_t``` ptr/size pair struct has been added to sokol_fetch.h,
+    and discrete ptr/size pairs have been replaced with sfetch_range_t
+    items. This affects the structs ```sfetch_request_t``` and ```sfetch_response_t```,
+    and the function ```sfetch_bind_buffer()```.
+  - The required changes in ```sfetch_response_t``` might be a bit non-obviois: To
+    access the fetched data, previous ```.buffer_ptr``` and ```.fetched_size```
+    was used. The fetched data is now accessible through an ```sfetch_range_t data```
+    item (```data.ptr``` and ```data.size```). The old ```.fetched_offset``` item
+    has been renamed to ```.data_offset``` to better conform with the new naming.
+  - The last two occurrences of discrete ptr/size pairs in sokol_app.h now have also
+    been replaced with ```sapp_range_t``` items, this only affects the structs
+    ```sapp_html5_fetch_request``` and ```sapp_html5_fetch_response```.
+
+- **03-Nov-2022** The language bindings generation has been updated for Zig 0.10.0,
+  and clang-14 (there was a minor change in the JSON ast-dump format).
+  Many thanks to github user @kcbanner for the Zig PR!
+
+- **02-Nov-2022** A new header sokol_spine.h (in the util dir), this is a
+  renderer and 'handle wrapper' around the spine-c runtime (Spine is a popular 2D
+  character anim system: http://esotericsoftware.com/). This turned out a much bigger
+  rabbit-hole than I initially expected, but the effort is justified by being a
+  experimentation testbed for a couple of things I want to add to other sokol
+  headers (for instance cleaned up handle pool code, a new logging- and error-reporting
+  system, render layers which will be useful for sokol_gl.h and sokol_debugtext.h).
+
+- **22-Oct-2022** All sokol headers now allow to override logging with a
+  callback function (installed in the setup call) instead of defining a SOKOL_LOG
+  macro. Overriding SOKOL_LOG still works as default fallback, but this is no
+  longer documented, consider this deprecated. Many thanks to github user
+  @Manuzor for the PR (see https://github.com/floooh/sokol/pull/721 for details)
+
+- **21-Oct-2022** RGB9E5 pixel format support in sokol_gfx.h and a GLES2 related
+  bugfix in the sokol_app.h Android backend:
+  - sokol_gfx.h now supports RGB9E5 textures (3*9 bit RGB + 5 bit shared exponent),
+    this works in all backends except GLES2 and WebGL1 (use ```sg_query_pixelformat()```
+    to check for runtime support). Many thanks to github user @allcreater for the PR!
+  - a bugfix in the sokol_app.h Android backend: when forcing a GLES2 context via
+    sapp_desc.gl_force_gles2, the Android backend correctly created a GLES2 context,
+    but then didn't communicate this through the function ```sapp_gles2()``` (which
+    still returned false in this case). This caused the sokol_gfx.h GL backend to
+    use the GLES3 code path instead GLES2 (which surprisingly seemed to have worked
+    fine, at least for the sokol samples which force GLES2).
+
+- **19-Oct-2022** Some fixes in the embedded Javascript code blocks (via EM_JS)
+  in sokol_app.h, sokol_args.h, sokol_audio.h and sokol_fetch.h:
+  - the JS code has been 'modernized' (e.g. const and let instead of var,
+    ```() => { ... }``` instead of ```function () { ... }``` for callbacks)
+  - false positives in the Closure static analysis have been suppressed
+    via inline hints
+
+- **16-Oct-2022** The Odin bindings generator and the generated bindings have
+  been simplified (the Odin binding now don't have separate wrapper functions).
+  Requires the latest Odin release. Also note: On M1 Macs I'm currently seeing
+  what looks like an ABI problem (in functions which pass color values to the C
+  side as uint8_t, the colors come out wrong). This also happened with the
+  previous binding version, so it looks like a regression in Odin. Might be
+  related to this recent bugfix (which I haven't tested yet):
+  https://github.com/odin-lang/Odin/issues/2121 Many thanks to @thePHTest for the
+  PR! (https://github.com/floooh/sokol/pull/719)
+
+- **15-Oct-2022**
+    - fixes for Emscripten 3.1.24: the sokol headers now use the new
+    **EM_JS_DEPS()** macro to declare 'indirect dependencies on JS library functions'.
+    This is a (much more robust) follow-up fix to the Emscripten related fixes from 10-Sep-2022.
+    The new Emscripten SDK also displays a couple of Javascript "static analyzer" warnings
+    by the Closure compiler (used in release mode to optimize and minify the generated
+    JS code). I fixed a couple of those warnings, but some warnings persist (all of them
+    false positives). Not sure yet if these can be fixed or need to be suppressed, but
+    that's for another time.
+    - the webkitAudioContext() fallback in sokol_audio.h's Emscripten backend
+    has been removed (only AudioContext is supported now), the fallback also
+    triggered a Closure warning, so it probably never worked as intended anyway.
+    - I also had to undo an older workaround in sokol_app.h on iOS (https://github.com/floooh/sokol/issues/645)
+    because this is now triggering a Metal validation layer error (https://github.com/floooh/sokol/issues/726).
+    The original case is no longer reproducible, so undoing the old workaround seems to
+    be a quick fix. Eventually I want to get rid of MTKView though, and go down to
+    CAMetalLayer.
+
+- **08-Oct-2022** sokol_app.h Android backend: the ```sapp_touchpoint``` struct
+  now has a new item ```sapp_android_tooltype android_tooltype;```. This exposes the
+  result of the Android NDK function ```AMotionEvent_getToolType()```.
+  Many thanks to @Wertzui123 for the initial PR (https://github.com/floooh/sokol/pull/717).
+
+- **25-Sep-2022**: sokol_app.h on Linux now optionally supports EGL instead of
+  GLX for the window system glue code and can create a GLES2 or GLES3 context
+  instead of a 'desktop GL' context.
+  To get EGL+GLES2/GLES3, just define SOKOL_GLES2 or SOKOL_GLES3 to compile the
+  implementation. To get EGL+GL, define SOKOL_GLCORE33 *and* SOKOL_FORCE_EGL.
+  By default, defining just SOKOL_GLCORE33 uses GLX for the window system glue
+  (just as before). Many thanks to GH user @billzez for the PR!
+
+- **10-Sep-2022**: sokol_app.h and sokol_args.h has been fixed for Emscripten 3.21, those headers
+  used the Emscripten Javascript helper function ```ccall()``` which is now part of the
+  'legacy runtime' and causes linker errors. Instead of ```ccall()``` sokol_app.h and sokol_args.h
+  now drop down to a lower level set of Emscripten JS helper functions (which hopefully won't
+  go away anytime soon).
+
+- **05-Aug-2022**: New officially supported and automatically updated language bindings for Odin:
+  https://github.com/floooh/sokol-odin (also see [gen_odin.py](https://github.com/floooh/sokol/blob/master/bindgen/gen_odin.py))
+
+- **10-Jul-2022**: New features in sokol_app.h and sokol_imgui.h:
+    - In sokol_app.h it's now possible to set a mouse cursor type from a number of predefined
+      types via the new function ```sapp_set_mouse_cursor(sapp_mouse_cursor cursor)```. The
+      available cursor types are compatible with GLFW and Dear ImGui. Supported platforms
+      are: macOS, linux, win32, uwp and web.
+    - ```sapp_show_mouse(bool shown)``` now also works on the web platform.
+    - In sokol_app.h, the poorly defined 'user cursor' feature has been removed (```sapp_desc.user_cursor```
+      and ```SAPP_EVENTTYPE_UPDATE_CURSOR```). This was a hack to allow changing the mouse cursor and
+      only worked on Win32 and macOS (with different behaviour). Since setting the cursor type
+      is now 'properly supported, this hack was removed.
+    - sokol_imgui.h will now set the cursor type via ```sapp_set_mouse_cursor()```. This can be
+      disabled with the new ```simgui_desc_t``` item ```disable_set_mouse_cursor```.
+    - sokol_imgui.h now automatically enables resizing windows from edges (not just the bottom-right corner),
+      this behaviour can be disabled with the new ```simgui_desc_t``` item ```disable_windows_resize_from_edges```.
+    - sokol_imgui.h can now optionally write to the alpha channel (useful if you want to render the UI
+      into a separate render target, which is later composed onto the default framebuffer). The feature
+      is enabled with the new ```simgui_desc_t``` item ```write_alpha_channel```.
+
+  Many thanks to **@tomc1998** for the initial [Linux/X11 mouse cursor type PR](https://github.com/floooh/sokol/pull/678) and
+  **@luigi-rosso** for the [sokol_imgui.h alpha channel PR](https://github.com/floooh/sokol/pull/687)!
+
+- **03-Jul-2022**: A new sokol_gfx.h function ```bool sg_query_buffer_will_overflow(sg_buffer buf, size_t size)```
+which allows to check if a call to ```sg_append_buffer()``` would overflow the buffer. This
+is an alternative to the ```sg_query_buffer_overflow()``` function which only reports
+the overflow after the fact. Many thanks to @RandyGaul for the PR!
+
+- **29-Jun-2022**: In sokol_app.h with the D3D11 backend, if SOKOL_DEBUG is
+defined, and the D3D11 device creation fails, there's now a fallback code
+path which tries to create the device again without the D3D11_CREATE_DEVICE_DEBUG
+flag. Turns out the D3D11 debug support may suddenly stop working (just happened
+to me, indicated by the Win10 "Graphics Tool" feature being silently uninstalled
+and failing to install when asked to do so). This fix at least allows sokol_app.h
+applications compiled in debug mode to run, even if the D3D11 debug layer doesn't
+work.
+
+- **29-May-2022**: The code generation scripts for the
+[sokol-nim](https://github.com/floooh/sokol-nim) language bindings have been
+revised and updated, many thanks to Gustav Olsson for the PR! (I'm planning to
+spend a few more days integrating the bindings generation with Github Actions,
+so that it's easier to publish new bindings after updates to the sokol headers).
+
+- **26-May-2022**: The GL backend in sokol_app.h now allows to override the GL
+  context version via two new items in the ```sapp_desc``` struct:
+  ```sapp_desc.gl_major_version``` and ```sapp_desc.gl_minor_version```. The
+  default GL context version remains at 3.2. Overriding the GL version might make
+  sense if you're not using sokol_app.h together with sokol_gfx.h, or otherwise
+  want to call GL functions directly. Note that this only works for the
+  'desktop GL' backends (Windows, Linux and macOS), but not for the GLES backends
+  (Android, iOS, web). Furthermore, on macOS only the GL versions 3.2 and 4.1
+  are available (plus the special config major=1 minor=0 creates an
+  NSOpenGLProfileVersionLegacy context). In general: use at your risk :) Many
+  thanks to Github user @pplux for the PR!
+
+- **15-May-2022**: The way internal memory allocation can be overridden with
+  your own functions has been changed from global macros to callbacks
+  provided in the API setup call. For instance in sokol_gfx.h:
+
+  ```c
+  void* my_malloc(size_t size, void* userdata) {
+    (void)userdata; // unused
+    return malloc(size);
+  }
+
+  void my_free(void* ptr, void* userdata) {
+    (void)userdata; // unused
+    free(ptr);
+  }
+
+  //...
+    sg_setup(&(sg_desc){
+      //...
+      .allocator = {
+        .alloc = my_malloc,
+        .free = my_free,
+        .user_data = ...,
+      }
+    });
+  ```
+
+  sokol_gfx.h will now call ```my_malloc()``` and ```my_free()``` whenever it needs
+  to allocate or free memory (note however that allocations inside OS
+  functions or 3rd party libraries are not affected).
+
+  If no override functions are provided, the standard library functions ```malloc()``` and ```free()```
+  will be used, just as before.
+
+  This change breaks source compatibility in the following headers:
+
+    - **sokol_fontstash.h**: the function signature of ```sfons_create()``` has changed,
+      this now takes a pointer to a new ```sfons_desc_t``` struct instead of
+      individual parameters.
+    - **sokol_gfx_imgui.h** (NOT sokol_imgui.h!): likewise, the function signature of
+      ```sg_imgui_init()``` has changed, this now takes an additional parameter
+      which is a pointer to a new ```sg_imgui_desc_t``` struct.
+
+  All affected headers also have a preprocessor check for the outdated
+  macros ```SOKOL_MALLOC```, ```SOKOL_CALLOC``` and ```SOKOL_FREE``` and throw
+  a compilation error if those macros are detected.
+
+  (if configuration through macros is still desired this could be added back in
+  the future, but I figured that the new way is more flexible in most situations).
+
+  The header sokol_memtrack.h and the sample [restart-sapp](https://floooh.github.io/sokol-html5/restart-sapp.html) have been updated accordingly.
+
+  Also search for ```MEMORY ALLOCATION OVERRIDE``` in the header documentation block
+  for more details.
+
+- **14-May-2022**: added a helper function ```simgui_map_keycode()``` to
+  sokol_imgui.h to map sokol_app.h keycodes (```sapp_keycode```,
+  ```SAPP_KEYCODE_*```) to Dear ImGui keycodes (```ImGuiKey```, ```ImGuiKey_*```).
+  If you're using Dear ImGui function to check for key input, you'll need to
+  update the code like this:
+
+  - Old:
+    ```cpp
+    ImGui::IsKeyPressed(SAPP_KEYCODE_A);
+    ```
+  - New:
+    ```cpp
+    ImGui::IsKeyPressed(simgui_map_keycode(SAPP_KEYCODE_A));
+    ```
+
+  This was basically 'fallout' from rewriting the input system in sokol_imgui.h
+  to the new evented IO system in Dear ImGui.
+
+- **08-Feb-2022**: sokol_imgui.h has been updated for Dear ImGui 1.87:
+  - sokol_imgui.h's input code has been rewritten to use the new evented IO
+    system and extended virtual key codes in Dear ImGui
+  - on non-Emscripten platforms, mouse buttons are no longer "cancelled" when
+    the mouse leaves the window (since the native desktop platforms
+    automatically capture the mouse when mouse buttons are pressed, but mouse
+    capture is not supported in the sokol_app.h Emscripten backend)
+
+- **28-Jan-2022**: some window size behaviour changes in sokol_app.h.
+  - Asking for a default-sized window (via sapp_desc.width/height = 0) now
+    behaves a bit differently on desktop platforms. Previously this set the
+    window size to 640x480, now a default window covers more screen area:
+      - on Windows CW_USEDEFAULT will be used for the size
+      - on macOS and Linux, the window size will be 4/5 of the
+        display size
+      - no behaviour changes on other platforms
+  - On Windows and Linux, the window is now centered (in a later update,
+    more control over the initial window position, and new functions for
+    positioning and sizing might be provided)
+  - On Windows, when toggling between windowed and fullscreen, the
+    window position and size will now be restored (on other platforms
+    this already happened automatically through the window system)
+  - On all desktop platforms if an application starts in fullscreen and
+    then is toggled back to windowed, the window will now be of the
+    expected size (provided in sapp_desc.width/height)
+
+- **20-Jan-2022**:
+  - sokol_audio.h: A compatibility fix in the sokol_audio.h WASAPI backend (Windows): On
+    some configs the IAudioClient::Initialize() call could fail because
+    of a mismatch between the requested number of channels and speaker config.
+    See [#614](https://github.com/floooh/sokol/issues/614) for details.
+  - sokol_app.h D3D11/DXGI: Fix an (uncritical) COM interface leak warning for IDXGIAdapter and
+    IDXGIFactory at shutdown, introduced with the recent disabling of Alt-Enter.
+
+- **18-Jan-2022**:
+  - sokol_app.h now has per-monitor DPI support on Windows and macOS: when
+    the application window is moved to a monitor with different DPI, the values
+    returned by sapp_dpi_scale(), sapp_width() and sapp_height() will update
+    accordingly (only if the application requested high-dpi rendering with
+    ```sapp_desc.high_dpi=true```, otherwise the dpi scale value remains
+    fixed at 1.0f). The application will receive an SAPP_EVENTTYPE_RESIZED event
+    if the default framebuffer size has changed because of a DPI change.
+    On Windows this feature requires Win10 version 1703 or later (aka the
+    'Creators Update'), older Windows version simply behave as before.
+    Many thank to @tjachmann for the initial PR with the Windows implementation!
+  - sokol_app.h: DPI scale computation on macOS is now more robust using the
+    NSScreen.backingScaleFactor value
+  - sokol_app.h: the new frame timing code in sokol_app.h now detects if the display
+    refresh rate changes and adjusts itself accordingly (for instance if the
+    window is moved between displays with different refresh rate)
+  - sokol_app.h D3D11/DXGI: during window movement and resize, the frame is now
+    presented with DXGI_PRESENT_DO_NOT_WAIT, this fixes some window system
+    stuttering issues on Win10 configs with recent NVIDIA drivers.
+  - sokol_app.h D3D11/DXGI: the application will no longer appear to freeze for
+    0.5 seconds when the title bar is grabbed with the mouse for movement, but
+    then not moving the mouse.
+  - sokol_app.h D3D11/DXGI: DXGI's automatic windowed/fullscreen switching via
+    Alt-Enter has been disabled, because this switched to 'real' fullscreen mode,
+    while sokol_app.h's fullscreen mode uses a borderless window. Use the
+    programmatic fullscreen/window switching via ```sapp_toggle_fullscreen()```
+    instead.
+  - **BREAKING CHANGE** in sokol_imgui.h: because the applications' DPI scale
+    can now change at any time, the DPI scale value is now communicated to
+    sokol_imgui.h in the ```simgui_new_frame()``` function. This has been
+    changed to accept a pointer to a new ```simgui_frame_desc_t``` struct.
+    With C99, change the simgui_new_frame() call as follows (if also using
+    sokol_app.h):
+    ```c
+    simgui_new_frame(&(simgui_frame_desc_t){
+        .width = sapp_width(),
+        .height = sapp_height(),
+        .delta_time = sapp_frame_duration(),
+        .dpi_scale = sapp_dpi_scale()
+    });
+    ```
+    On C++ this works:
+    ```c++
+    simgui_new_frame({ sapp_width(), sapp_height(), sapp_frame_duration(), sapp_dpi_scale() });
+    ```
+    ...or in C++20:
+    ```c++
+    simgui_new_frame({
+        .width = sapp_width(),
+        .height = sapp_height(),
+        .delta_time = sapp_frame_duration(),
+        .dpi_scale = sapp_dpi_scale()
+    });
+    ```
+  - **KNOWN ISSUE**: the recent change in sokol-audio's WASAPI backend to directly consume
+    float samples doesn't appear to work on some configs (see [#614](https://github.com/floooh/sokol/issues/614)),
+    investigation is underway
+
+- **15-Jan-2022**:
+  - A bugfix in the GL backend for uniform arrays using the 'native' uniform block layout.
+    The bug was a regression in the recent 'uniform data handling' update. See
+    [PR #611](https://github.com/floooh/sokol/pull/611) for details, and this [new sample/test](https://github.com/floooh/sokol-samples/blob/master/glfw/uniformarrays-glfw.c).
+    Many thanks to @nmr8acme for the PR!
+
+- **08-Jan-2022**: some enhancements and cleanup to uniform data handling in sokol_gfx.h
+  and the sokol-shdc shader compiler:
+    - *IMPORTANT*: when updating sokol_gfx.h (and you're using the sokol-shdc shader compiler),
+      don't forget to update the sokol-shdc binaries too!
+    - The GLSL uniform types int, ivec2, ivec3 and
+      ivec4 can now be used in shader code, those are exposed to the GL
+      backends with the new ```sg_uniform_type``` items
+      ```SG_UNIFORM_TYPE_INT[2,3,4]```.
+    - A new enum ```sg_uniform_layout```, currently with the values SG_UNIFORMLAYOUT_NATIVE
+      and SG_UNIFORMLAYOUT_STD140. The enum is used in ```sg_shader_uniform_block_desc```
+      as a 'packing rule hint', so that the GL backend can properly locate the offset
+      of uniform block members. The default (SG_UNIFORMLAYOUT_NATIVE) keeps the same
+      behaviour, so existing code shouldn't need to be changed. With the packing
+      rule SG_UNIFORMLAYOUT_STD140 the uniform block interior is expected to be
+      layed out according to the OpenGL std140 packing rule.
+    - Note that the SG_UNIFORMLAYOUT_STD140 only allows a subset of the actual std140
+      packing rule: arrays are only allowed for the types vec4, int4 and mat4.
+      This is because the uniform data must still be compatible with
+      ```glUniform()``` calls in the GL backends (which have different
+      'interior alignment' for arrays).
+    - The sokol-shdc compiler supports the new uniform types and will annotate the
+      code-generated sg_shader_desc structs with SG_UNIFORMLAYOUT_STD140,
+      and there are new errors to make sure that uniform blocks are compatible
+      with all sokol_gfx.h backends.
+    - Likewise, sokol_gfx.h has tighter validation for the ```sg_shader_uniform_block```
+      desc struct, but only when the GL backend is used (in general, the interior
+      layout of uniform blocks is only relevant for GL backends, on all other backends
+      sokol_gfx.h just passes the uniform data as an opaque block to the shader)
+  For more details see:
+    - [new sections in the sokol_gfx.h documentation](https://github.com/floooh/sokol/blob/ba64add0b67cac16fc86fb6b64d1da5f67e80c0f/sokol_gfx.h#L343-L450)
+    - [documentation of ```sg_uniform_layout```](https://github.com/floooh/sokol/blob/ba64add0b67cac16fc86fb6b64d1da5f67e80c0f/sokol_gfx.h#L1322-L1355)
+    - [enhanced sokol-shdc documentation](https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md#glsl-uniform-blocks-and-c-structs)
+    - [a new sample 'uniformtypes-sapp'](https://floooh.github.io/sokol-html5/uniformtypes-sapp.html)
+
+  PS: and an unrelated change: the frame latency on Win32+D3D11 has been slightly improved
+  via IDXGIDevice1::SetMaximumFrameLatency()
+
+- **27-Dec-2021**: sokol_app.h frame timing improvements:
+  - A new function ```double sapp_frame_duration(void)``` which returns the frame
+    duration in seconds, averaged over the last 256 frames to smooth out
+    jittering spikes. If available, this uses platform/backend specific
+    functions of the swapchain API:
+      - On Windows: DXGI's GetFrameStatistics().SyncQPCTime.
+      - On Emscripten: the timestamp provided by the RAF callback, this will
+        still be clamped and jittered on some browsers, but averaged over
+        a number of frames yields a pretty accurate approximation
+        of the actual frame duration.
+      - On Metal, ```MTLDrawable addPresentedHandler + presentedTime```
+        doesn't appear to function correctly on macOS Monterey and/or M1 Macs, so
+        instead mach_absolute_time() is called at the start of the MTKView
+        frame callback.
+      - In all other situations, the same timing method is used as
+        in sokol_time.h.
+  - On macOS and iOS, sokol_app.h now queries the maximum display refresh rate
+    of the main display and uses this as base to compute the preferred frame
+    rate (by multiplying with ```sapp_desc.swap_interval```), previously the
+    preferred frame rate was hardwired to ```60 * swap_interval```. This means
+    that native macOS and iOS applications may now run at 120Hz instead of
+    60Hz depending on the device (I realize that this isn't ideal, there
+    will probably be a different way to hint the preferred interval at
+    which the frame callback is called, which would also support disabling
+    vsync and probably also adaptive vsync).
+
+- **19-Dec-2021**: some sokol_audio.h changes:
+  - on Windows, sokol_audio.h no longer converts audio samples
+    from float to int16_t, but instead configures WASAPI to directly accept
+    float samples. Many thanks to github user iOrange for the PR!
+  - sokol_audio.h has a new public function ```saudio_suspended()``` which
+    returns true if the audio device/context is currently in suspended mode.
+    On all backends except WebAudio this always returns false. This allows
+    to show a visual hint to the user that audio is muted until the first
+    input event is received.
+
+- **18-Dec-2021**: the sokol_gfx.h ```sg_draw()``` function now uses the currently applied
+  pipeline object to decide if the GL or D3D11 backend's instanced drawing function
+  should be called instead of the ```num_instances``` argument. This fixes a
+  bug on some WebGL configs when instanced rendering is configured
+  but ```sg_draw()``` is called with an instance count of 1.
+
+- **18-Nov-2021**: sokol_gl.h has a new function to control the point size for
+  point list rendering: ```void sgl_point_size(float size)```. Note that on D3D11
+  the point size is currently ignored (since D3D11 doesn't support a point size at
+  all, the feature will need to be emulated in sokol_gl.h when the D3D11 backend is active).
+  Also note that points cannot currently be textured, only colored.
+
+- **08-Oct-2021**: texture compression support in sokol_gfx.h has been revisited:
+    - tighter validation checks on texture creation:
+        - content data validation now also happens in ```sg_make_image()``` (previously only in ```sg_update_image()```)
+        - validate that compressed textures are immutable
+        - separate "no data" validation checks for immutable vs dynamic/stream textures
+        - provided data size for creating or updating textures must match the expected surface sizes exactly
+    - fix PVRTC row and surface pitch computation according to the GL PVRTC extension spec
+    - better adhere to Metal documentation for the ```MTLTexture.replaceRegion``` parameters (when bytesPerImage is expected to be zero or not)
+
+- **02-Sep-2021**: some minor non-breaking additions:
+    - sokol_app.h: new events FOCUSED and UNFOCUSED to indicate that the
+      window has gained or lost the focused state (Win32: WM_SETFOCUS/WM_KILLFOCUS,
+      macOS: windowDidBecomeKey/windowDidResignKey, X11: FocusIn/FocusOut,
+      HTML5: focus/blur).
+    - sokol_app.h Emscripten backend: the input event keycode is now extracted
+      from the HTML5 code string which yields the actual unmapped virtual key code.
+
+- **21-Aug-2021**: some minor API tweaks in sokol_gl.h and sokol_debugtext.h,
+  one of them breaking (still minor though):
+    - sokol_gl.h has a new function ```sgl_default_context()``` which returns the
+      default context handle, it's the same as the global constant SGL_DEFAULT_CONTEXT,
+      but wrapping this in a function is better for language bindings
+    - ...and a similar function in sokol_debugtext.h: ```sdtx_default_context()```
+    - The sokol_gl.h function ```sgl_default_pipeline()``` has been renamed to
+      ```sgl_load_default_pipeline()```. This fits better with the related
+      function ```sgl_load_pipeline()``` and doesn't 'semantically clash'
+      with the new function sgl_default_context(). The sgl_default_pipeline()
+      function is rarely used, so it's quite unlikely that this change breaks
+      your code.
+
+- **19-Aug-2021**: sokol_gl.h gained rendering context support, this allows
+  sokol-gl to render into different sokol-gfx render passes. No changes are
+  needed for existing sokol-gl code. Check the updated
+  [header documentation](https://github.com/floooh/sokol/blob/master/util/sokol_gl.h)
+  and the new sample
+  [sgl-context-sapp](https://floooh.github.io/sokol-html5/sgl-context-sapp.html)
+  for details!
+
+- **21-Jun-2021**: A new utility header sokol_color.h has been added, which adds
+  sokol_gfx.h-compatible named color constants and a handful initial utility
+  functions. See the [header documentation](https://github.com/floooh/sokol/blob/master/util/sokol_color.h)
+  for details. Many thanks to Stuart Adams (@nyalloc) for contributing the header!
+
 - **12-Apr-2021**: Minor new feature in sokol_app.h: mouse buttons are now
   also reported as modifier flags in most input events (similar to the
   Ctrl-, Alt-, Shift- and Super-key modifiers). This lets you quickly check
@@ -24,7 +855,7 @@
     ago (around iOS 12.x) MTKView started to ignore the contentScaleFactor
     property, which lead to sokol_app.h always setting up a HighDPI
     framebuffer even when sapp_desc.high_dpi wasn't set. The fix is to set
-    the MTKView's drawableSize explicitely now.
+    the MTKView's drawableSize explicitly now.
     - The iOS GL backend didn't support MSAA multisampling so far, this has
     been fixed now, but only one MSAA mode (4x) is available, which will be
     selected when sapp_desc.sample_count is greater than 1.
@@ -78,7 +909,7 @@ uses the **AVAudioSession** class to activate and deactivate audio output as nee
 This fixes sokol_audio.h for iPhones (so far, sokol_audio.h accidentally only worked
 for iPads). Please see [this issue](https://github.com/floooh/sokol/issues/431) for details.
 A somewhat unfortunate side effect of this fix is that sokol_audio.h must now be compiled
-as Objective-C when targetting iOS, also note that a new framework must be linked: ```AVFoundation```.
+as Objective-C when targeting iOS, also note that a new framework must be linked: ```AVFoundation```.
 Many thanks to @oviano for providing the PR!
 
 - **14-Feb-2021**: The Dear ImGui rendering backend in [sokol_imgui.h](https://github.com/floooh/sokol/blob/master/util/sokol_imgui.h) has been rewritten to only do a single

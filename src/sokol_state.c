@@ -76,8 +76,9 @@ void sokol_state_draw(struct SokolState* state)
 
   int const canvas_width = sapp_width();
   int const canvas_height = sapp_height();
-  struct sg_pass_action pass_action = { .colors[0] = { .action = SG_ACTION_CLEAR,
-                                                       .value = { 0.0f, 0.0f, 0.0f, 1.0f } } };
+  struct sg_pass_action pass_action = {
+    .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.0f, 0.0f, 0.0f, 1.0f } }
+  };
 
   sg_begin_default_pass(&pass_action, canvas_width, canvas_height);
   sg_apply_pipeline(state->pipeline);

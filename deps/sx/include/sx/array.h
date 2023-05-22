@@ -3,7 +3,7 @@
 // License: https://github.com/septag/sx#license-bsd-2-clause
 //
 // array.h - v1.0 - Dynamic arrays
-// Source: https://github.com/nothings/stb/blob/master/stb_ds.h
+// Source: https://github.com/nothings/stb/blob/master/stretchy_buffer.h
 //
 // clang-format off
 //    Unlike C++ vector<>, the sx_array has the same
@@ -15,91 +15,23 @@
 //         2. have to return the pointer from functions which might expand it
 //            (either as a return value or by storing it to a ptr-to-ptr)
 //
-//    Non-function interface:
+//    Now you can do the following things with this array:
 //
-//      Declare an empty dynamic array of type T
-//        T* foo = NULL;
-//
-//      Access the i'th item of a dynamic array 'foo' of type T, T* foo:
-//        foo[i]
-//
-//    Functions (actually macros):
-//
-//      sx_array_free:
-//        void sx_array_free(sx_alloc* alloc, T*);
-//          Frees the array.
-//
-//      sx_array_count:
-//        ptrdiff_t sx_array_count(T*);
-//          Returns the number of elements in the array.
-//
-//      sx_array_countu:
-//        size_t sx_array_countu(T*);
-//          Returns the number of elements in the array as an unsigned type.
-//
-//      sx_array_pop:
-//        T sx_array_pop(T* a)
-//          Removes the final element of the array and returns it.
-//
-//      sx_array_push:
-//        T sx_array_push(sx_alloc* alloc, T* a, T b);
-//          Appends the item b to the end of array a. Returns b.
-//
-//      sx_array_ins:
-//        T sx_array_ins(T* a, int p, T b);
-//          Inserts the item b into the middle of array a, into a[p],
-//          moving the rest of the array over. Returns b.
-//
-//      sx_array_insn:
-//        void sx_array_ins(T* a, int p, int n);
-//          Inserts n uninitialized items into array a starting at a[p],
-//          moving the rest of the array over.
-//
-//      sx_array_addnptr:
-//        T* sx_array_addnptr(sx_alloc* alloc, T* a, int n)
-//          Appends n uninitialized items onto array at the end.
-//          Returns a pointer to the first uninitialized item added.
-//
-//      sx_array_addnindex:
-//        size_t sx_array_addnindex(sx_alloc* alloc, T* a, int n)
-//          Appends n uninitialized items onto array at the end.
-//          Returns the index of the first uninitialized item added.
-//
-//      sx_array_del:
-//        void sx_array_del(T* a, int p);
-//          Deletes the element at a[p], moving the rest of the array over.
-//
-//      sx_array_deln:
-//        void sx_array_del(T* a, int p, int n);
-//          Deletes n elements starting at a[p], moving the rest of the array over.
-//
-//      sx_array_delswap:
-//        void sx_array_delswap(T* a, int p);
-//          Deletes the element at a[p], replacing it with the element from
-//          the end of the array. O(1) performance.
-//
-//      sx_array_setlen:
-//        void sx_array_setlen(sx_alloc* alloc, T* a, int n);
-//          Changes the length of the array to n. Allocates uninitialized
-//          slots at the end if necessary.
-//
-//      sx_array_reserve:
-//        size_t sx_array_reserve(sx_alloc* alloc, T* a, int n);
-//          Sets the length of allocated storage to at least n. It will not
-//          change the length of the array.
-//
-//      sx_array_cap:
-//        size_t sx_array_cap(T* a);
-//          Returns the number of total elements the array can contain without
-//          needing to be reallocated.
-//
-//      sx_array_clear:
-//        void sx_array_clear(T* a);
-//          Resets the array count to zero, but does not resize memory.
-//
+//         sx_array_free(sx_alloc* alloc, TYPE *a)          free the array
+//         sx_array_count(TYPE *a)                          the number of elements in the array
+//         sx_array_push(sx_alloc* alloc, TYPE *a, TYPE v)  adds v on the end of the array, a la push_back
+//         sx_array_add(sx_alloc* alloc, TYPE *a, int n)    adds n uninitialized elements at end of array & returns pointer to first added
+//         sx_array_last(TYPE *a)                           returns an lvalue of the last item in the array
+//         sx_array_pop(TYPE *a, index)                     removes an element from the array and decreases array count
+//         sx_array_pop_last(TYPE *a)                       removes last element from the array and decreases array count
+//         a[n]                                             access the nth (counting from 0) element of the array
+//         sx_array_clear(TYPE* a)                          resets the array count to zero, but does not resize memory
+//         sx_array_reserve(sx_alloc* alloc, TYPE* a, int n) reserves N elements in array without incrementing the count
+//         sx_array_push_byindex(alloc, TYPE* a, v, index)  receives index, if index is within the array, sets the array element to the value
+//                                                          if not, pushes the element into the array
 // Usage:
 //       NOTE: include "allocator.h" before array.h to prevent warnings and errors
-//       sx_array_declare(SomeStruct) = NULL; // SomeStruct *arr = NULL;
+//       SomeStruct* SX_ARRAY arr = NULL;
 //       while (something)
 //       {
 //          SomeStruct new_one;
@@ -113,115 +45,87 @@
 //     their arguments more than once (except for 'v' in sx_array_push), so the arguments should
 //     be side-effect-free.
 //
-//     Note that 'TYPE *a' in sx_array_push and sx_array_add* must be lvalues
+//     Note that 'TYPE *a' in sx_array_push and sx_array_add must be lvalues
 //     so that the library can overwrite the existing pointer if the object has to be reallocated.
 //
 // NOTE for C++ users:
-//     take a look at `sx_array` struct and it's members at the end of this file. It's a thin template
+//     take a look at `sx_array` struct and it's members at the end of this file. It's a thing template 
 //     wrapper over array macros for more convenient C++ usage
 //
 #pragma once
 
 typedef struct sx_alloc sx_alloc;
 
-#define sx_array_setcap(_alloc,a,n)    (sx__arrgrow(_alloc,a,0,n))
-#define sx_array_reserve               sx_array_setcap // synonym
-#define sx_array_setlen(_alloc,a,n)    ((sx_array_cap(a) < (size_t) (n) ? sx_array_setcap((_alloc),(a),(size_t)(n)),0 : 0), (a) ? sx__header(a)->length = (size_t) (n) : 0)
-#define sx_array_cap(a)                ((a) ? sx__header(a)->capacity : 0)
-#define sx_array_len(a)                ((a) ? (ptrdiff_t) sx__header(a)->length : 0)
-#define sx_array_lenu(a)               ((a) ?             sx__header(a)->length : 0)
-#define sx_array_count                 sx_array_len // synonym
-#define sx_array_countu                sx_array_lenu // synonym
-#define sx_array_put(_alloc,a,v)       (sx__arrmaybegrow(_alloc,a,1), (a)[sx__header(a)->length++] = (v))
-#define sx_array_push                  sx_array_put // synonym
-#define sx_array_pop(a)                (sx__header(a)->length--, (a)[sx__header(a)->length])
-#define sx_array_addnptr(_alloc,a,n)   (sx__arrmaybegrow(_alloc,a,n), sx__header(a)->length += (n), &(a)[sx__header(a)->length-(n)])
-#define sx_array_addnindex(_alloc,a,n) (sx__arrmaybegrow(_alloc,a,n), sx__header(a)->length += (n), sx__header(a)->length-(n))
-#define sx_array_add                   sx_array_addnptr // synonym
-#define sx_array_last(a)               ((a)[sx__header(a)->length-1])
-#define sx_array_free(_alloc, a)       ((void) ((a) ? sx_free(_alloc, sx__header(a)) : (void)0), (a)=NULL)
-#define sx_array_del(a,i)              sx_array_deln(a,i,1)
-#define sx_array_deln(a,i,n)           (sx_memmove(&(a)[i], &(a)[(i)+(n)], sizeof *(a) * (sx__header(a)->length-(n)-(i))), sx__header(a)->length -= (n))
-#define sx_array_delswap(a,i)          ((a)[i] = sx_array_last(a), sx__header(a)->length -= 1)
-#define sx_array_insn(_alloc,a,i,n)    ((void) (sx_array_addnptr(_alloc,(a),(n)), sx_memmove(&(a)[(i)+(n)], &(a)[i], sizeof *(a) * (sx__header(a)->length-(n)-(i)))))
-#define sx_array_ins(a,i,v)            (sx_array_insn((a),(i),1), (a)[i]=(v))
-#define sx_array_clear(a)              ((void) ((a) ? (sx__header(a)->length = 0) : 0))
+// This macro is just for verbosity and readability of the code
+// You can use this in the pointer types to note that the type is an sx_array 
+#ifndef SX_ARRAY
+#   define SX_ARRAY
+#endif 
+
+#define sx_array_free(_alloc, a) ((a) ? sx_free(_alloc, sx__sbraw(a)), 0 : 0)
+#define sx_array_push(_alloc, a, v) (sx__sbmaybegrow(_alloc, a, 1), (a)[sx__sbn(a)++] = (v))
+#define sx_array_count(a) ((a) ? sx__sbn(a) : 0)
+#define sx_array_add(_alloc, a, n) (sx__sbmaybegrow(_alloc, a, n), sx__sbn(a) += (n), &(a)[sx__sbn(a) - (n)])
+#define sx_array_last(a) ((a)[sx__sbn(a) - 1])
+#define sx_array_pop(a, idx)  do { (a)[idx] = sx_array_last(a);  --sx__sbn(a); } while (0)
+#define sx_array_pop_last(a)  do { --sx__sbn(a); } while (0)
+#define sx_array_pop_lastn(a, n) do { sx__sbn(a) -= (n); } while (0)
+#define sx_array_clear(a) ((a) ? (sx__sbn(a) = 0) : 0)
+#define sx_array_reserve(_alloc, a, n) (sx_array_add(_alloc, a, n), sx_array_clear(a))
+#define sx_array_push_byindex(_alloc, a, v, _index) \
+    do {                                            \
+        if ((_index) >= sx_array_count(a))          \
+            sx_array_push(_alloc, a, v);            \
+        else                                        \
+            (a)[(_index)] = (v);                    \
+    } while (0)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Internal
+#define sx__sbraw(a) ((int*)(a)-2)
+#define sx__sbm(a) sx__sbraw(a)[0]
+#define sx__sbn(a) sx__sbraw(a)[1]
 
-typedef struct {
-  size_t      length;
-  size_t      capacity;
-  void      * hash_table;
-  ptrdiff_t   temp;
-} sx__array_header;
+#define sx__sbneedgrow(a, n) ((a) == 0 || sx__sbn(a) + (n) >= sx__sbm(a))
+#define sx__sbmaybegrow(_alloc, a, n) (sx__sbneedgrow(a, (n)) ? sx__sbgrow(_alloc, a, n) : 0)
+#define sx__sbgrow(_alloc, a, n)  (*((void**)&(a)) = sx__sbgrowf((a), (n), sizeof(*(a)), (_alloc), __FILE__, __FUNCTION__, __LINE__))
 
-#define sx__header(t)                ((sx__array_header *) (t) - 1)
-#define sx__arrmaybegrow(_alloc,a,n) ((!(a) || sx__header(a)->length + (n) > sx__header(a)->capacity) \
-                                         ? (sx__arrgrow(_alloc,a,n,0),0) : 0)
-#define sx__arrgrow(_alloc,a,b,c)    ((a) = sx__arrgrowf((a), sizeof *(a), (b), (c), (_alloc), __FILE__, __FUNCTION__, __LINE__))
-
-// clang-format on
-SX_INLINE void* sx__arrgrowf(void* a, size_t elemsize, size_t addlen, size_t min_cap,
-                             const sx_alloc* alloc, const char* file, const char* func, int line)
+SX_INLINE void* sx__sbgrowf(void* arr, int increment, int itemsize, const sx_alloc* alloc,
+                            const char* file, const char* func, int line)
 {
-    void* b;
-    size_t min_len = sx_array_len(a) + addlen;
+    int new_count = arr ? (sx__sbm(arr) << 1) : 0;
+    new_count = new_count > SX_CONFIG_ARRAY_INIT_SIZE ? new_count : SX_CONFIG_ARRAY_INIT_SIZE;
+    int min_needed = sx_array_count(arr) + increment;
+    int m = new_count > min_needed ? new_count : min_needed;
+    int* p = (int*)sx__realloc(alloc, arr ? sx__sbraw(arr) : 0,
+                               (size_t)itemsize*(size_t)m + sizeof(int)*2, 0, file, func, line);
 
-    // compute the minimum capacity needed
-    if (min_len > min_cap)
-        min_cap = min_len;
-
-    if (min_cap <= sx_array_cap(a))
-        return a;
-
-    // increase needed capacity to guarantee O(1) amortized
-    if (min_cap < 2 * sx_array_cap(a))
-        min_cap = 2 * sx_array_cap(a);
-    else if (min_cap < 4)
-        min_cap = 4;
-
-    // if (num_prev < 65536) if (a) prev_allocs[num_prev++] = (int *) ((char *) a+1);
-    // if (num_prev == 2201)
-    //  num_prev = num_prev;
-    b = sx__realloc(alloc, (a) ? sx__header(a) : 0, elemsize * min_cap + sizeof(sx__array_header),
-                    0, file, func, line);
-
-    if (!b) {
+    if (p) {
+        p[0] = m;
+        if (!arr)
+            p[1] = 0;
+        return p + 2;
+    } else {
         sx_out_of_memory();
         return 0x0;    // NULL
     }
-
-    // if (num_prev < 65536) prev_allocs[num_prev++] = (int *) (char *) b;
-    b = (char*)b + sizeof(sx__array_header);
-    if (a == NULL) {
-        sx__header(b)->length = 0;
-        sx__header(b)->hash_table = 0;
-    }
-    sx__header(b)->capacity = min_cap;
-
-    return b;
 }
 
 // cpp wrapper (minimal template)
 #ifdef __cplusplus
 template <typename _T>
-struct sx_array {
+struct sx_array 
+{
     _T* p;
     const sx_alloc* alloc;
 
-    sx_array()
-    {
-        p = nullptr;
-        alloc = nullptr;
-    }
-    explicit sx_array(const sx_alloc* _alloc) : alloc(_alloc), p(nullptr) {}
+    sx_array() { p = nullptr; alloc = nullptr; }
+    explicit sx_array(const sx_alloc* _alloc) : alloc(_alloc), p(nullptr) {} 
 
-    ~sx_array()
-    {
+    ~sx_array() 
+    { 
         if (alloc) {
-            sx_array_free(alloc, p);
+            sx_array_free(alloc, p); 
             alloc = nullptr;
         }
         p = nullptr;
@@ -244,24 +148,24 @@ struct sx_array {
         alloc = nullptr;
     }
 
-    void push(const _T& _value)
+    void push(const _T& _value) 
     {
         sx_assert(alloc);
         sx_array_push(alloc, p, _value);
     }
 
-    void del(int _index)
+    void pop(int _index)
     {
         sx_assert(alloc);
         sx_assert(_index < sx_array_count(p));
-        sx_array_del(alloc, _index);
+        sx_array_pop(p, _index);
     }
 
-    void pop()
+    void pop_last()
     {
         sx_assert(alloc);
         sx_assert(sx_array_count(p));
-        sx_array_pop(p);
+        sx_array_pop_last(p);
     }
 
     void clear()

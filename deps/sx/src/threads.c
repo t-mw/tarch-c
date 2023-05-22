@@ -144,7 +144,7 @@ bool sx_semaphore_wait(sx_sem* sem, int msecs)
 #if SX_PLATFORM_POSIX
 
 // Tls
-sx_tls sx_tls_create()
+sx_tls sx_tls_create(void)
 {
     pthread_key_t key;
     int r = pthread_key_create(&key, NULL);
@@ -283,10 +283,11 @@ void sx_thread_setname(sx_thread* thrd, const char* name)
 #    endif
 }
 
-void sx_thread_yield()
+void sx_thread_yield(void)
 {
     sched_yield();
 }
+
 
 // Mutex
 void sx_mutex_init(sx_mutex* mutex)
@@ -308,19 +309,19 @@ void sx_mutex_release(sx_mutex* mutex)
     pthread_mutex_destroy(&_m->handle);
 }
 
-void sx_mutex_lock(sx_mutex* mutex)
+void sx_mutex_enter(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     pthread_mutex_lock(&_m->handle);
 }
 
-void sx_mutex_unlock(sx_mutex* mutex)
+void sx_mutex_exit(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     pthread_mutex_unlock(&_m->handle);
 }
 
-bool sx_mutex_trylock(sx_mutex* mutex)
+bool sx_mutex_try(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     return pthread_mutex_trylock(&_m->handle) == 0;
@@ -397,6 +398,7 @@ bool sx_signal_wait(sx_signal* sig, int msecs)
     sx_unused(r);
     return ok;
 }
+
 
 // Semaphore (posix only)
 #    if !SX_PLATFORM_APPLE
@@ -500,19 +502,19 @@ void sx_mutex_release(sx_mutex* mutex)
     DeleteCriticalSection(&_m->handle);
 }
 
-void sx_mutex_lock(sx_mutex* mutex)
+void sx_mutex_enter(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     EnterCriticalSection(&_m->handle);
 }
 
-void sx_mutex_unlock(sx_mutex* mutex)
+void sx_mutex_exit(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     LeaveCriticalSection(&_m->handle);
 }
 
-bool sx_mutex_trylock(sx_mutex* mutex)
+bool sx_mutex_try(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     return TryEnterCriticalSection(&_m->handle) == TRUE;
@@ -646,6 +648,7 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
 
 int sx_thread_destroy(sx_thread* thrd, const sx_alloc* alloc)
 {
+    sx_assert(thrd);
     sx_assertf(thrd->running, "Thread is not running!");
 
     DWORD exit_code;
@@ -705,7 +708,7 @@ void sx_thread_setname(sx_thread* thrd, const char* name)
 #    error "Not implemented for this platform"
 #endif
 
-uint32_t sx_thread_tid()
+uint32_t sx_thread_tid(void)
 {
 #if SX_PLATFORM_WINDOWS
     return GetCurrentThreadId();
@@ -723,3 +726,4 @@ uint32_t sx_thread_tid()
     sx_assertf(0, "Tid not implemented");
 #endif    // SX_PLATFORM_
 }
+

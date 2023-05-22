@@ -22,6 +22,8 @@
 ///
 #define _sx_stringize(_x) #_x
 #define sx_stringize(_x) _sx_stringize(_x)
+#define _sx_concat(_a, _b) _a##_b
+#define sx_concat(_a, _b) _sx_concat(_a, _b)
 
 ///
 // Function decleration code helpers
@@ -85,6 +87,9 @@
 #       define SX_INLINE static inline  
 #    endif
 #    define SX_NO_VTABLE __declspec(novtable)
+#    ifndef __cplusplus
+#       define _Thread_local __declspec(thread)
+#    endif // __cplusplus
 #else
 #    error "Unknown SX_COMPILER_?"
 #endif
@@ -98,8 +103,7 @@
 #if SX_COMPILER_CLANG
 #    define SX_PRAGMA_DIAGNOSTIC_PUSH_CLANG_() _Pragma("clang diagnostic push")
 #    define SX_PRAGMA_DIAGNOSTIC_POP_CLANG_() _Pragma("clang diagnostic pop")
-#    define SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG(_x) \
-        _Pragma(sx_stringize(clang diagnostic ignored _x))
+#    define SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG(_x) _Pragma(sx_stringize(clang diagnostic ignored _x))
 #else
 #    define SX_PRAGMA_DIAGNOSTIC_PUSH_CLANG_()
 #    define SX_PRAGMA_DIAGNOSTIC_POP_CLANG_()
@@ -172,3 +176,20 @@
 #    define sx_cppbool(_b) _b
 #    define SX_CONSTEXPR 
 #endif
+
+// see array.h
+#ifndef SX_ARRAY
+#   define SX_ARRAY
+#endif 
+
+// Idea: https://www.youtube.com/watch?v=QpAhX-gsHMs&t=967s
+// sx_defer and scope can be used to mimick the behavior of go and zig's defer 
+// "start" is the statement that you would like to run at the begining of the scope
+// "end" is the statement that you would like to run at the end of the scope
+#define _sx_var(_name) sx_concat(_name, __LINE__)
+#define sx_defer(_start, _end) for (int _sx_var(_i_) = (_start, 0); !_sx_var(_i_); (_sx_var(_i_) += 1), _end)
+#define sx_scope(_end) for (int _sx_var(_i_) = 0; !_sx_var(_i_); (_sx_var(_i_) += 1), _end)
+
+// somewhat like python's `with` statement
+#define sx_with(_init, _release) _init; for (int _sx_var(_i_) = 0; !_sx_var(_i_); (_sx_var(_i_) += 1), _release)
+

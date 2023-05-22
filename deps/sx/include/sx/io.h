@@ -106,7 +106,7 @@ typedef struct sx_mem_block {
     int64_t size;
     int64_t start_offset;         // incremented offset. the actual *ptr would be (uint8_t*)ptr-offset
     int align;
-    int volatile refcount; 
+    uint32_t refcount; 
 } sx_mem_block;
 
 SX_API sx_mem_block* sx_mem_create_block(const sx_alloc* alloc, int64_t size,
@@ -223,7 +223,7 @@ typedef uint32_t sx_iff_flags;
 
 typedef struct sx_iff_file {
     sx_iff_type type;
-    sx_iff_chunk* chunks;    // sx_array: chunk_id's are references to this array (chunks[chunk_id])
+    sx_iff_chunk* SX_ARRAY chunks;    // chunk_id's are references to this array (chunks[chunk_id])
     const sx_alloc* alloc;
     union {
         sx_mem_reader* mread;
@@ -234,14 +234,10 @@ typedef struct sx_iff_file {
 } sx_iff_file;
 #pragma pack(pop)
 
-SX_API bool sx_iff_init_from_file_reader(sx_iff_file* iff, sx_file* file, sx_iff_flags flags,
-                                         const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_file_writer(sx_iff_file* iff, sx_file* file, sx_iff_flags flags,
-                                         const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_mem_reader(sx_iff_file* iff, sx_mem_reader* mread, sx_iff_flags flags,
-                                       const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_mem_writer(sx_iff_file* iff, sx_mem_writer* mwrite, sx_iff_flags flags,
-                                        const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_file_reader(sx_iff_file* iff, sx_file* file, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_file_writer(sx_iff_file* iff, sx_file* file, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_mem_reader(sx_iff_file* iff, sx_mem_reader* mread, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_mem_writer(sx_iff_file* iff, sx_mem_writer* mwrite, sx_iff_flags flags, const sx_alloc* alloc);
 SX_API void sx_iff_release(sx_iff_file* iff);
 
 SX_API int sx_iff_get_chunk(sx_iff_file* iff, uint32_t fourcc, int parent_id);

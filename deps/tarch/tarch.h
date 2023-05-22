@@ -1,6 +1,7 @@
-#ifndef TARCH_MAX_PATH
-#  define TARCH_MAX_PATH 256
-#endif
+#ifndef TARCH_H
+#define TARCH_H
+
+#define TARCH_MAX_PATH 256
 
 #define var __auto_type
 #define let __auto_type const
@@ -38,4 +39,11 @@
 #  define TARCH_DBG_LOG(tag, ...) TARCH_LOG("debug:" tag, __VA_ARGS__)
 #else
 #  define TARCH_DBG_LOG(tag, ...)
+#endif
+
+void* tarch_malloc(size_t size, void* user_data);
+void* tarch_calloc(size_t n, size_t s, void* user_data);
+void* tarch_realloc(void* p, size_t s, void* user_data);
+void tarch_free(void* ptr, void* user_data);
+
 #endif

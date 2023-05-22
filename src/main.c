@@ -32,18 +32,6 @@ sapp_desc sokol_main(int argc, char* argv[])
                       .window_title = "tarch" };
 }
 
-static void* tarch_malloc(size_t size, void* user_data)
-{
-  sx_unused(user_data);
-  return sx_malloc(sx_alloc_malloc(), size);
-}
-
-static void tarch_free(void* ptr, void* user_data)
-{
-  sx_unused(user_data);
-  sx_free(sx_alloc_malloc(), ptr);
-}
-
 static void init(void)
 {
   TARCH_DBG_LOG("main", "Initializing app");

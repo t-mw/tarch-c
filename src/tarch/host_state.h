@@ -3,7 +3,7 @@
 #include <sx/allocator.h>
 
 struct HostState {
-  // imgui context etc.
+    // imgui context etc.
 };
 
 struct HostState* host_state_create(sx_alloc const* alloc);

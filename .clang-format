@@ -1,39 +1,15 @@
 ---
-AlignAfterOpenBracket: Align
-AlignConsecutiveAssignments: 'false'
-AlignConsecutiveDeclarations: 'false'
-AlignEscapedNewlines: Left
-AlignTrailingComments: 'true'
-AllowAllParametersOfDeclarationOnNextLine: 'true'
-AllowShortBlocksOnASingleLine: 'false'
-AllowShortCaseLabelsOnASingleLine: 'false'
-AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: 'false'
-AllowShortLoopsOnASingleLine: 'true'
-AlwaysBreakBeforeMultilineStrings: 'true'
-AlwaysBreakTemplateDeclarations: 'true'
-BreakBeforeBinaryOperators: None
-BreakBeforeBraces: Linux
-ColumnLimit: '100'
-Cpp11BracedListStyle: 'false'
-IncludeBlocks: Preserve
-IndentCaseLabels: 'false'
-IndentPPDirectives: AfterHash
-IndentWidth: '2'
-IndentWrappedFunctionNames: 'true'
+BasedOnStyle: LLVM
 Language: Cpp
-MaxEmptyLinesToKeep: '2'
-NamespaceIndentation: Inner
-PointerAlignment: Left
-SpaceBeforeAssignmentOperators: 'true'
-SpaceBeforeParens: ControlStatements
-SpaceInEmptyParentheses: 'false'
-SpacesBeforeTrailingComments: '4'
-SpacesInCStyleCastParentheses: 'false'
-SpacesInContainerLiterals: 'false'
-SpacesInParentheses: 'false'
 Standard: Cpp11
-TabWidth: '2'
+
+ColumnLimit: 135
+
+IndentWidth: 4
 UseTab: Never
 
-...
+AlignEscapedNewlines: Left
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortFunctionsOnASingleLine: Empty
+IndentPPDirectives: None
+PointerAlignment: Left

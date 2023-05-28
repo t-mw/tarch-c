@@ -19,83 +19,72 @@ static char* g_exe_path;
 static struct HostState* host_state;
 static struct HotReloadContext* hot_reload_context;
 
-sapp_desc sokol_main(int argc, char* argv[])
-{
-  sx_unused(argc);
-  g_exe_path = argv[0];
+sapp_desc sokol_main(int argc, char* argv[]) {
+    sx_unused(argc);
+    g_exe_path = argv[0];
 
-  return (sapp_desc){ .init_cb = init,
-                      .frame_cb = frame,
-                      .cleanup_cb = cleanup,
-                      .width = 1024,
-                      .height = 768,
-                      .window_title = "tarch" };
+    return (sapp_desc){
+        .init_cb = init, .frame_cb = frame, .cleanup_cb = cleanup, .width = 1024, .height = 768, .window_title = "tarch"};
 }
 
-static void init(void)
-{
-  DBG_LOG("main", "Initializing app");
+static void init(void) {
+    DBG_LOG("main", "Initializing app");
 
-  stm_setup();
-  sg_setup(&(sg_desc){ .context = sapp_sgcontext(),
-                       .allocator = {
-                           .alloc = tarch_malloc,
-                           .free = tarch_free,
-                       } });
+    stm_setup();
+    sg_setup(&(sg_desc){.context = sapp_sgcontext(),
+                        .allocator = {
+                            .alloc = tarch_malloc,
+                            .free = tarch_free,
+                        }});
 
-  host_state = host_state_create(sx_alloc_malloc());
-  hot_reload_context = hot_reload_context_create(sx_alloc_malloc(), host_state);
+    host_state = host_state_create(sx_alloc_malloc());
+    hot_reload_context = hot_reload_context_create(sx_alloc_malloc(), host_state);
 }
 
-static bool handle_events(double dt)
-{
-  // setup gfx resources in runner binary context until
-  // https://github.com/floooh/sokol/issues/91 is implemented
-  if (!GAME_API.handle_event(sx_alloc_malloc(),
-                             hot_reload_context_get_game_state(hot_reload_context), host_state,
-                             (struct Event){ .type = "init_draw", .dt = dt })) {
-    return false;
-  }
+static bool handle_events(double dt) {
+    // setup gfx resources in runner binary context until
+    // https://github.com/floooh/sokol/issues/91 is implemented
+    if (!GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context), host_state,
+                               (struct Event){.type = "init_draw", .dt = dt})) {
+        return false;
+    }
 
-  if (!hot_reload_context_handle_event(sx_alloc_malloc(), hot_reload_context, host_state,
-                                       (struct Event){ .type = "update", .dt = dt })) {
-    return false;
-  }
+    if (!hot_reload_context_handle_event(sx_alloc_malloc(), hot_reload_context, host_state,
+                                         (struct Event){.type = "update", .dt = dt})) {
+        return false;
+    }
 
-  // run the draw action in the runner binary context until
-  // https://github.com/floooh/sokol/issues/91 is implemented
-  if (!GAME_API.handle_event(sx_alloc_malloc(),
-                             hot_reload_context_get_game_state(hot_reload_context), host_state,
-                             (struct Event){ .type = "draw", .dt = dt })) {
-    return false;
-  }
+    // run the draw action in the runner binary context until
+    // https://github.com/floooh/sokol/issues/91 is implemented
+    if (!GAME_API.handle_event(sx_alloc_malloc(), hot_reload_context_get_game_state(hot_reload_context), host_state,
+                               (struct Event){.type = "draw", .dt = dt})) {
+        return false;
+    }
 
-  return true;
+    return true;
 }
 
-static void frame(void)
-{
-  hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, g_exe_path);
+static void frame(void) {
+    hot_reload(sx_alloc_malloc(), hot_reload_context, host_state, g_exe_path);
 
-  static uint64_t last_time = 0;
-  if (!last_time) {
-    last_time = stm_now();
-  }
-  double dt = stm_sec(stm_laptime(&last_time));
-  if (!handle_events(dt)) {
-    sapp_quit();
-  }
+    static uint64_t last_time = 0;
+    if (!last_time) {
+        last_time = stm_now();
+    }
+    double dt = stm_sec(stm_laptime(&last_time));
+    if (!handle_events(dt)) {
+        sapp_quit();
+    }
 }
 
-static void cleanup(void)
-{
-  DBG_LOG("main", "Exiting app");
+static void cleanup(void) {
+    DBG_LOG("main", "Exiting app");
 
-  sg_shutdown();
+    sg_shutdown();
 
-  hot_reload_context_destroy(sx_alloc_malloc(), hot_reload_context, host_state);
-  hot_reload_context = NULL;
+    hot_reload_context_destroy(sx_alloc_malloc(), hot_reload_context, host_state);
+    hot_reload_context = NULL;
 
-  host_state_destroy(sx_alloc_malloc(), host_state);
-  host_state = NULL;
+    host_state_destroy(sx_alloc_malloc(), host_state);
+    host_state = NULL;
 }

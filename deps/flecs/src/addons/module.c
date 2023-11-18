@@ -1,8 +1,14 @@
+/**
+ * @file addons/module.c
+ * @brief Module addon.
+ */
+
 #include "flecs.h"
 
 #ifdef FLECS_MODULE
 
 #include "../private_api.h"
+#include <ctype.h>
 
 char* ecs_module_path_from_c(
     const char *c_name)
@@ -13,7 +19,7 @@ char* ecs_module_path_from_c(
 
     for (ptr = c_name; (ch = *ptr); ptr++) {
         if (isupper(ch)) {
-            ch = ecs_to_i8(tolower(ch));
+            ch = flecs_ito(char, tolower(ch));
             if (ptr != c_name) {
                 ecs_strbuf_appendstrn(&str, ".", 1);
             }
@@ -27,44 +33,50 @@ char* ecs_module_path_from_c(
 
 ecs_entity_t ecs_import(
     ecs_world_t *world,
-    ecs_module_action_t init_action,
-    const char *module_name,
-    void *handles_out,
-    size_t handles_size)
+    ecs_module_action_t module,
+    const char *module_name)
 {
-    ecs_assert(!world->in_progress, ECS_INVALID_WHILE_ITERATING, NULL);
+    ecs_check(!(world->flags & EcsWorldReadonly), 
+        ECS_INVALID_WHILE_READONLY, NULL);
 
     ecs_entity_t old_scope = ecs_set_scope(world, 0);
-    const char *old_name_prefix = world->name_prefix;
+    const char *old_name_prefix = world->info.name_prefix;
 
     char *path = ecs_module_path_from_c(module_name);
     ecs_entity_t e = ecs_lookup_fullpath(world, path);
     ecs_os_free(path);
     
     if (!e) {
-        ecs_trace_1("import %s", module_name);
+        ecs_trace("#[magenta]import#[reset] %s", module_name);
         ecs_log_push();
 
         /* Load module */
-        init_action(world);
+        module(world);
 
         /* Lookup module entity (must be registered by module) */
         e = ecs_lookup_fullpath(world, module_name);
-        ecs_assert(e != 0, ECS_MODULE_UNDEFINED, module_name);
+        ecs_check(e != 0, ECS_MODULE_UNDEFINED, module_name);
 
         ecs_log_pop();
     }
 
-    /* Copy value of module component in handles_out parameter */
-    if (handles_size && handles_out) {
-        void *handles_ptr = ecs_get_mut_w_entity(world, e, e, NULL);
-        ecs_os_memcpy(handles_out, handles_ptr, ecs_from_size_t(handles_size));   
-    }
-
     /* Restore to previous state */
     ecs_set_scope(world, old_scope);
-    world->name_prefix = old_name_prefix;
+    world->info.name_prefix = old_name_prefix;
 
+    return e;
+error:
+    return 0;
+}
+
+ecs_entity_t ecs_import_c(
+    ecs_world_t *world,
+    ecs_module_action_t module,
+    const char *c_name)
+{
+    char *name = ecs_module_path_from_c(c_name);
+    ecs_entity_t e = ecs_import(world, module, name);
+    ecs_os_free(name);
     return e;
 }
 
@@ -73,13 +85,13 @@ ecs_entity_t ecs_import_from_library(
     const char *library_name,
     const char *module_name)
 {
-    ecs_assert(library_name != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(library_name != NULL, ECS_INVALID_PARAMETER, NULL);
 
-    char *import_func = (char*)module_name; /* safe */
-    char *module = (char*)module_name;
+    char *import_func = ECS_CONST_CAST(char*, module_name);
+    char *module = ECS_CONST_CAST(char*, module_name);
 
     if (!ecs_os_has_modules() || !ecs_os_has_dl()) {
-        ecs_os_err(
+        ecs_err(
             "library loading not supported, set module_to_dl, dlopen, dlclose "
             "and dlproc os API callbacks first");
         return 0;
@@ -99,11 +111,11 @@ ecs_entity_t ecs_import_from_library(
                 capitalize = true;
             } else {
                 if (capitalize) {
-                    *bptr = ecs_to_i8(toupper(ch));
+                    *bptr = flecs_ito(char, toupper(ch));
                     bptr ++;
                     capitalize = false;
                 } else {
-                    *bptr = ecs_to_i8(tolower(ch));
+                    *bptr = flecs_ito(char, tolower(ch));
                     bptr ++;
                 }
             }
@@ -119,19 +131,19 @@ ecs_entity_t ecs_import_from_library(
 
     char *library_filename = ecs_os_module_to_dl(library_name);
     if (!library_filename) {
-        ecs_os_err("failed to find library file for '%s'", library_name);
+        ecs_err("failed to find library file for '%s'", library_name);
         if (module != module_name) {
             ecs_os_free(module);
         }
         return 0;
     } else {
-        ecs_trace_1("found file '%s' for library '%s'", 
+        ecs_trace("found file '%s' for library '%s'", 
             library_filename, library_name);
     }
 
     ecs_os_dl_t dl = ecs_os_dlopen(library_filename);
     if (!dl) {
-        ecs_os_err("failed to load library '%s' ('%s')", 
+        ecs_err("failed to load library '%s' ('%s')", 
             library_name, library_filename);
         
         ecs_os_free(library_filename);
@@ -142,25 +154,25 @@ ecs_entity_t ecs_import_from_library(
 
         return 0;
     } else {
-        ecs_trace_1("library '%s' ('%s') loaded", 
+        ecs_trace("library '%s' ('%s') loaded", 
             library_name, library_filename);
     }
 
     ecs_module_action_t action = (ecs_module_action_t)
         ecs_os_dlproc(dl, import_func);
     if (!action) {
-        ecs_os_err("failed to load import function %s from library %s",
+        ecs_err("failed to load import function %s from library %s",
             import_func, library_name);
         ecs_os_free(library_filename);
         ecs_os_dlclose(dl);            
         return 0;
     } else {
-        ecs_trace_1("found import function '%s' in library '%s' for module '%s'",
+        ecs_trace("found import function '%s' in library '%s' for module '%s'",
             import_func, library_name, module);
     }
 
     /* Do not free id, as it will be stored as the component identifier */
-    ecs_entity_t result = ecs_import(world, action, module, NULL, 0);
+    ecs_entity_t result = ecs_import(world, action, module);
 
     if (import_func != module_name) {
         ecs_os_free(import_func);
@@ -173,44 +185,51 @@ ecs_entity_t ecs_import_from_library(
     ecs_os_free(library_filename);
 
     return result;
+error:
+    return 0;
 }
 
-ecs_entity_t ecs_new_module(
+ecs_entity_t ecs_module_init(
     ecs_world_t *world,
-    ecs_entity_t e,
-    const char *name,
-    size_t size,
-    size_t alignment)
+    const char *c_name,
+    const ecs_component_desc_t *desc)
 {
-    ecs_assert(world != NULL, ECS_INVALID_PARAMETER, NULL);
-    assert(world->magic == ECS_WORLD_MAGIC);
+    ecs_check(desc != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_poly_assert(world, ecs_world_t);
 
+    ecs_entity_t old_scope = ecs_set_scope(world, 0);
+
+    ecs_entity_t e = desc->entity;
     if (!e) {
-        char *module_path = ecs_module_path_from_c(name);
+        char *module_path = ecs_module_path_from_c(c_name);
         e = ecs_new_from_fullpath(world, module_path);
+        ecs_set_symbol(world, e, module_path);
+        ecs_os_free(module_path);
+    } else if (!ecs_exists(world, e)) {
+        char *module_path = ecs_module_path_from_c(c_name);
+        ecs_ensure(world, e);
+        ecs_add_fullpath(world, e, module_path);
+        ecs_set_symbol(world, e, module_path);
+        ecs_os_free(module_path);
+    }
+    
+    ecs_add_id(world, e, EcsModule);
 
-        EcsName *name_ptr = ecs_get_mut(world, e, EcsName, NULL);
-        ecs_os_free(name_ptr->symbol);
+    ecs_component_desc_t private_desc = *desc;
+    private_desc.entity = e;
 
-        /* Assign full path to symbol. This allows for modules to be redefined
-         * in C++ without causing name conflicts */
-        name_ptr->symbol = module_path;
+    if (desc->type.size) {
+        ecs_entity_t result = ecs_component_init(world, &private_desc);
+        ecs_assert(result != 0, ECS_INTERNAL_ERROR, NULL);
+        ecs_assert(result == e, ECS_INTERNAL_ERROR, NULL);
+        (void)result;
     }
 
-    ecs_entity_t result = ecs_new_component(world, e, NULL, size, alignment);
-    ecs_assert(result != 0, ECS_INTERNAL_ERROR, NULL);
+    ecs_set_scope(world, old_scope);
 
-    /* Add module tag */
-    ecs_add_entity(world, result, EcsModule);
-
-    /* Add module to itself. This way we have all the module information stored
-     * in a single contained entity that we can use for namespacing */
-    ecs_set_ptr_w_entity(world, result, result, size, NULL);
-
-    /* Set the current scope to the module */
-    ecs_set_scope(world, result);
-
-    return result;
+    return e;
+error:
+    return 0;
 }
 
 #endif

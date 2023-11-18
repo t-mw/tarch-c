@@ -1,6 +1,6 @@
 /**
  * @file os_api.h
- * @brief Operationg system abstractions.
+ * @brief Operating system abstraction API.
  *
  * This file contains the operating system abstraction API. The flecs core 
  * library avoids OS/runtime specific API calls as much as possible. Instead it
@@ -13,24 +13,23 @@
 #ifndef FLECS_OS_API_H
 #define FLECS_OS_API_H
 
-#include <stdarg.h>
+/**
+ * @defgroup c_os_api OS API
+ * @brief Interface for providing OS specific functionality.
+ * 
+ * \ingroup c
+ * @{
+ */
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#include <stdarg.h>
+#include <errno.h>
+
+#if defined(ECS_TARGET_WINDOWS)
 #include <malloc.h>
-#elif defined(__FreeBSD__)
+#elif defined(ECS_TARGET_FREEBSD)
 #include <stdlib.h>
 #else
 #include <alloca.h>
-#endif
-
-#if defined(_WIN32)
-#define ECS_OS_WINDOWS
-#elif defined(__linux__)
-#define ECS_OS_LINUX
-#elif defined(__APPLE__) && defined(__MACH__)
-#define ECS_OS_DARWIN
-#else
-/* Unknown OS */
 #endif
 
 #ifdef __cplusplus
@@ -42,7 +41,7 @@ typedef struct ecs_time_t {
     uint32_t nanosec;
 } ecs_time_t;
 
-/* Allocation counters (not thread safe) */
+/* Allocation counters */
 extern int64_t ecs_os_api_malloc_count;
 extern int64_t ecs_os_api_realloc_count;
 extern int64_t ecs_os_api_calloc_count;
@@ -53,6 +52,10 @@ typedef uintptr_t ecs_os_thread_t;
 typedef uintptr_t ecs_os_cond_t;
 typedef uintptr_t ecs_os_mutex_t;
 typedef uintptr_t ecs_os_dl_t;
+typedef uintptr_t ecs_os_sock_t;
+
+/* 64 bit thread id */
+typedef uint64_t ecs_os_thread_id_t;
 
 /* Generic function pointer type */
 typedef void (*ecs_os_proc_t)(void);
@@ -101,12 +104,27 @@ typedef
 void* (*ecs_os_api_thread_join_t)(
     ecs_os_thread_t thread);
 
+typedef
+ecs_os_thread_id_t (*ecs_os_api_thread_self_t)(void);
+
+/* Tasks */
+typedef
+ecs_os_thread_t (*ecs_os_api_task_new_t)(
+    ecs_os_thread_callback_t callback,
+    void *param);
+
+typedef
+void* (*ecs_os_api_task_join_t)(
+    ecs_os_thread_t thread);
 
 /* Atomic increment / decrement */
 typedef
-int (*ecs_os_api_ainc_t)(
+int32_t (*ecs_os_api_ainc_t)(
     int32_t *value);
 
+typedef
+int64_t (*ecs_os_api_lainc_t)(
+    int64_t *value);
 
 /* Mutex */
 typedef
@@ -152,15 +170,24 @@ void (*ecs_os_api_sleep_t)(
     int32_t sec,
     int32_t nanosec);
 
+typedef 
+void (*ecs_os_api_enable_high_timer_resolution_t)(
+    bool enable);
+
 typedef
 void (*ecs_os_api_get_time_t)(
     ecs_time_t *time_out);
 
+typedef
+uint64_t (*ecs_os_api_now_t)(void);
+
 /* Logging */
 typedef
 void (*ecs_os_api_log_t)(
-    const char *fmt,
-    va_list args);
+    int32_t level,     /* Logging level */
+    const char *file,  /* File where message was logged */
+    int32_t line,      /* Line it was logged */
+    const char *msg);
 
 /* Application termination */
 typedef
@@ -186,7 +213,7 @@ char* (*ecs_os_api_module_to_path_t)(
     const char *module_id);
 
 /* Prefix members of struct with 'ecs_' as some system headers may define 
- * macro's for functions like "strdup", "log" or "_free" */
+ * macros for functions like "strdup", "log" or "_free" */
 
 typedef struct ecs_os_api_t {
     /* API init / deinit */
@@ -205,10 +232,17 @@ typedef struct ecs_os_api_t {
     /* Threads */
     ecs_os_api_thread_new_t thread_new_;
     ecs_os_api_thread_join_t thread_join_;
+    ecs_os_api_thread_self_t thread_self_;
+
+    /* Tasks */
+    ecs_os_api_thread_new_t task_new_;
+    ecs_os_api_thread_join_t task_join_;
 
     /* Atomic incremenet / decrement */
     ecs_os_api_ainc_t ainc_;
     ecs_os_api_ainc_t adec_;
+    ecs_os_api_lainc_t lainc_;
+    ecs_os_api_lainc_t ladec_;
 
     /* Mutex */
     ecs_os_api_mutex_new_t mutex_new_;
@@ -225,13 +259,16 @@ typedef struct ecs_os_api_t {
 
     /* Time */
     ecs_os_api_sleep_t sleep_;
+    ecs_os_api_now_t now_;
     ecs_os_api_get_time_t get_time_;
 
     /* Logging */
-    ecs_os_api_log_t log_;
-    ecs_os_api_log_t log_error_;
-    ecs_os_api_log_t log_debug_;
-    ecs_os_api_log_t log_warning_;
+    ecs_os_api_log_t log_; /* Logging function. The level should be interpreted as: */
+                           /* >0: Debug tracing. Only enabled in debug builds. */
+                           /*  0: Tracing. Enabled in debug/release builds. */
+                           /* -2: Warning. An issue occurred, but operation was successful. */
+                           /* -3: Error. An issue occurred, and operation was unsuccessful. */
+                           /* -4: Fatal. An issue occurred, and application must quit. */
 
     /* Application termination */
     ecs_os_api_abort_t abort_;
@@ -247,7 +284,22 @@ typedef struct ecs_os_api_t {
 
     /* Overridable function that translates from a logical module id to a
      * path that contains module-specif resources or assets */
-    ecs_os_api_module_to_path_t module_to_etc_;    
+    ecs_os_api_module_to_path_t module_to_etc_;
+
+    /* Trace level */
+    int32_t log_level_;
+
+    /* Trace indentation */
+    int32_t log_indent_;
+
+    /* Last error code */
+    int32_t log_last_error_;
+
+    /* Last recorded timestamp */
+    int64_t log_last_timestamp_;
+
+    /* OS API flags */
+    ecs_flags32_t flags_;
 } ecs_os_api_t;
 
 FLECS_API
@@ -262,6 +314,9 @@ void ecs_os_fini(void);
 FLECS_API
 void ecs_os_set_api(
     ecs_os_api_t *os_api);
+
+FLECS_API
+ecs_os_api_t ecs_os_get_api(void);
 
 FLECS_API
 void ecs_os_set_api_defaults(void);
@@ -279,46 +334,105 @@ void ecs_os_set_api_defaults(void);
 #ifndef ecs_os_calloc
 #define ecs_os_calloc(size) ecs_os_api.calloc_(size)
 #endif
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(ECS_TARGET_WINDOWS)
 #define ecs_os_alloca(size) _alloca((size_t)(size))
 #else
 #define ecs_os_alloca(size) alloca((size_t)(size))
 #endif
 
+#define ecs_os_malloc_t(T) ECS_CAST(T*, ecs_os_malloc(ECS_SIZEOF(T)))
+#define ecs_os_malloc_n(T, count) ECS_CAST(T*, ecs_os_malloc(ECS_SIZEOF(T) * (count)))
+#define ecs_os_calloc_t(T) ECS_CAST(T*, ecs_os_calloc(ECS_SIZEOF(T)))
+#define ecs_os_calloc_n(T, count) ECS_CAST(T*, ecs_os_calloc(ECS_SIZEOF(T) * (count)))
+
+#define ecs_os_realloc_t(ptr, T) ECS_CAST(T*, ecs_os_realloc(ptr, ECS_SIZEOF(T)))
+#define ecs_os_realloc_n(ptr, T, count) ECS_CAST(T*, ecs_os_realloc(ptr, ECS_SIZEOF(T) * (count)))
+#define ecs_os_alloca_t(T) ECS_CAST(T*, ecs_os_alloca(ECS_SIZEOF(T)))
+#define ecs_os_alloca_n(T, count) ECS_CAST(T*, ecs_os_alloca(ECS_SIZEOF(T) * (count)))
+
 /* Strings */
 #ifndef ecs_os_strdup
 #define ecs_os_strdup(str) ecs_os_api.strdup_(str)
 #endif
+
+#ifdef __cplusplus
+#define ecs_os_strlen(str) static_cast<ecs_size_t>(strlen(str))
+#define ecs_os_strncmp(str1, str2, num) strncmp(str1, str2, static_cast<size_t>(num))
+#define ecs_os_memcmp(ptr1, ptr2, num) memcmp(ptr1, ptr2, static_cast<size_t>(num))
+#define ecs_os_memcpy(ptr1, ptr2, num) memcpy(ptr1, ptr2, static_cast<size_t>(num))
+#define ecs_os_memset(ptr, value, num) memset(ptr, value, static_cast<size_t>(num))
+#define ecs_os_memmove(dst, src, size) memmove(dst, src, static_cast<size_t>(size))
+#else
 #define ecs_os_strlen(str) (ecs_size_t)strlen(str)
-#define ecs_os_strcmp(str1, str2) strcmp(str1, str2)
 #define ecs_os_strncmp(str1, str2, num) strncmp(str1, str2, (size_t)(num))
 #define ecs_os_memcmp(ptr1, ptr2, num) memcmp(ptr1, ptr2, (size_t)(num))
 #define ecs_os_memcpy(ptr1, ptr2, num) memcpy(ptr1, ptr2, (size_t)(num))
 #define ecs_os_memset(ptr, value, num) memset(ptr, value, (size_t)(num))
-#define ecs_os_memmove(ptr, value, num) memmove(ptr, value, (size_t)(num))
+#define ecs_os_memmove(dst, src, size) memmove(dst, src, (size_t)(size))
+#endif
 
-#if defined(_MSC_VER)
+#define ecs_os_memcpy_t(ptr1, ptr2, T) ecs_os_memcpy(ptr1, ptr2, ECS_SIZEOF(T))
+#define ecs_os_memcpy_n(ptr1, ptr2, T, count) ecs_os_memcpy(ptr1, ptr2, ECS_SIZEOF(T) * count)
+#define ecs_os_memcmp_t(ptr1, ptr2, T) ecs_os_memcmp(ptr1, ptr2, ECS_SIZEOF(T))
+
+#define ecs_os_memmove_t(ptr1, ptr2, T) ecs_os_memmove(ptr1, ptr2, ECS_SIZEOF(T))
+#define ecs_os_memmove_n(ptr1, ptr2, T, count) ecs_os_memmove(ptr1, ptr2, ECS_SIZEOF(T) * count)
+#define ecs_os_memmove_t(ptr1, ptr2, T) ecs_os_memmove(ptr1, ptr2, ECS_SIZEOF(T))
+
+#define ecs_os_strcmp(str1, str2) strcmp(str1, str2)
+#define ecs_os_memset_t(ptr, value, T) ecs_os_memset(ptr, value, ECS_SIZEOF(T))
+#define ecs_os_memset_n(ptr, value, T, count) ecs_os_memset(ptr, value, ECS_SIZEOF(T) * count)
+#define ecs_os_zeromem(ptr) ecs_os_memset(ptr, 0, ECS_SIZEOF(*ptr))
+
+#define ecs_os_memdup_t(ptr, T) ecs_os_memdup(ptr, ECS_SIZEOF(T))
+#define ecs_os_memdup_n(ptr, T, count) ecs_os_memdup(ptr, ECS_SIZEOF(T) * count)
+
+#define ecs_offset(ptr, T, index)\
+    ECS_CAST(T*, ECS_OFFSET(ptr, ECS_SIZEOF(T) * index))
+
+#if !defined(ECS_TARGET_POSIX) && !defined(ECS_TARGET_MINGW)
 #define ecs_os_strcat(str1, str2) strcat_s(str1, INT_MAX, str2)
 #define ecs_os_sprintf(ptr, ...) sprintf_s(ptr, INT_MAX, __VA_ARGS__)
 #define ecs_os_vsprintf(ptr, fmt, args) vsprintf_s(ptr, INT_MAX, fmt, args)
 #define ecs_os_strcpy(str1, str2) strcpy_s(str1, INT_MAX, str2)
+#ifdef __cplusplus
+#define ecs_os_strncpy(str1, str2, num) strncpy_s(str1, INT_MAX, str2, static_cast<size_t>(num))
+#else
 #define ecs_os_strncpy(str1, str2, num) strncpy_s(str1, INT_MAX, str2, (size_t)(num))
+#endif
 #else
 #define ecs_os_strcat(str1, str2) strcat(str1, str2)
 #define ecs_os_sprintf(ptr, ...) sprintf(ptr, __VA_ARGS__)
 #define ecs_os_vsprintf(ptr, fmt, args) vsprintf(ptr, fmt, args)
 #define ecs_os_strcpy(str1, str2) strcpy(str1, str2)
+#ifdef __cplusplus
+#define ecs_os_strncpy(str1, str2, num) strncpy(str1, str2, static_cast<size_t>(num))
+#else
 #define ecs_os_strncpy(str1, str2, num) strncpy(str1, str2, (size_t)(num))
 #endif
+#endif
 
+/* Files */
+#ifndef ECS_TARGET_POSIX
+#define ecs_os_fopen(result, file, mode) fopen_s(result, file, mode)
+#else
+#define ecs_os_fopen(result, file, mode) (*(result)) = fopen(file, mode)
+#endif
 
 /* Threads */
 #define ecs_os_thread_new(callback, param) ecs_os_api.thread_new_(callback, param)
 #define ecs_os_thread_join(thread) ecs_os_api.thread_join_(thread)
+#define ecs_os_thread_self() ecs_os_api.thread_self_()
+
+/* Tasks */
+#define ecs_os_task_new(callback, param) ecs_os_api.task_new_(callback, param)
+#define ecs_os_task_join(thread) ecs_os_api.task_join_(thread)
 
 /* Atomic increment / decrement */
 #define ecs_os_ainc(value) ecs_os_api.ainc_(value)
 #define ecs_os_adec(value) ecs_os_api.adec_(value)
+#define ecs_os_lainc(value) ecs_os_api.lainc_(value)
+#define ecs_os_ladec(value) ecs_os_api.ladec_(value)
 
 /* Mutex */
 #define ecs_os_mutex_new() ecs_os_api.mutex_new_()
@@ -335,20 +449,52 @@ void ecs_os_set_api_defaults(void);
 
 /* Time */
 #define ecs_os_sleep(sec, nanosec) ecs_os_api.sleep_(sec, nanosec)
+#define ecs_os_now() ecs_os_api.now_()
 #define ecs_os_get_time(time_out) ecs_os_api.get_time_(time_out)
 
-/* Logging (use functions to avoid using variadic macro arguments) */
+/* Logging */
 FLECS_API
-void ecs_os_log(const char *fmt, ...);
+void ecs_os_dbg(const char *file, int32_t line, const char *msg);
 
 FLECS_API
-void ecs_os_warn(const char *fmt, ...);
+void ecs_os_trace(const char *file, int32_t line, const char *msg);
 
 FLECS_API
-void ecs_os_err(const char *fmt, ...);
+void ecs_os_warn(const char *file, int32_t line, const char *msg);
 
 FLECS_API
-void ecs_os_dbg(const char *fmt, ...);
+void ecs_os_err(const char *file, int32_t line, const char *msg);
+
+FLECS_API
+void ecs_os_fatal(const char *file, int32_t line, const char *msg);
+
+FLECS_API
+const char* ecs_os_strerror(int err);
+
+FLECS_API
+void ecs_os_strset(char **str, const char *value);
+
+#ifdef FLECS_ACCURATE_COUNTERS
+#define ecs_os_inc(v)  (ecs_os_ainc(v))
+#define ecs_os_linc(v) (ecs_os_lainc(v))
+#define ecs_os_dec(v)  (ecs_os_adec(v))
+#define ecs_os_ldec(v) (ecs_os_ladec(v))
+#else
+#define ecs_os_inc(v)  (++(*v))
+#define ecs_os_linc(v) (++(*v))
+#define ecs_os_dec(v)  (--(*v))
+#define ecs_os_ldec(v) (--(*v))
+#endif
+
+#ifdef ECS_TARGET_MINGW
+/* mingw bug: without this a conversion error is thrown, but isnan/isinf should
+ * accept float, double and long double. */
+#define ecs_os_isnan(val) (isnan((float)val))
+#define ecs_os_isinf(val) (isinf((float)val))
+#else
+#define ecs_os_isnan(val) (isnan(val))
+#define ecs_os_isinf(val) (isinf(val))
+#endif
 
 /* Application termination */
 #define ecs_os_abort() ecs_os_api.abort_()
@@ -396,6 +542,10 @@ bool ecs_os_has_heap(void);
 FLECS_API
 bool ecs_os_has_threading(void);
 
+/** Are task functions available? */
+FLECS_API
+bool ecs_os_has_task_support(void);
+
 /** Are time functions available? */
 FLECS_API
 bool ecs_os_has_time(void);
@@ -415,5 +565,7 @@ bool ecs_os_has_modules(void);
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif

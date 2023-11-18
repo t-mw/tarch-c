@@ -1,5 +1,5 @@
 /**
- * @file snapshot.h
+ * @file addons/snapshot.h
  * @brief Snapshot addon.
  *
  * A snapshot records the state of a world in a way so that it can be restored
@@ -12,6 +12,14 @@
 
 #ifdef FLECS_SNAPSHOT
 
+/**
+ * @defgroup c_addons_snapshot Snapshot
+ * @brief Save & restore world.
+ * 
+ * \ingroup c_addons
+ * @{
+ */
+
 #ifndef FLECS_SNAPSHOT_H
 #define FLECS_SNAPSHOT_H
 
@@ -19,12 +27,14 @@
 extern "C" {
 #endif
 
+/** A snapshot stores the state of a world in a particular point in time. */
+typedef struct ecs_snapshot_t ecs_snapshot_t;
+
 /** Create a snapshot.
- * This operation makes a copy of all component in the world that matches the 
- * specified filter.
+ * This operation makes a copy of the current state of the world.
  *
  * @param world The world to snapshot.
- * @param return The snapshot.
+ * @return The snapshot.
  */
 FLECS_API
 ecs_snapshot_t* ecs_snapshot_take(
@@ -35,13 +45,11 @@ ecs_snapshot_t* ecs_snapshot_take(
  * an application can control what is stored by the snapshot. 
  *
  * @param iter An iterator to the data to be stored by the snapshot.
- * @param next A function pointer to the next operation for the iterator.
- * @param return The snapshot.
+ * @return The snapshot.
  */
 FLECS_API
 ecs_snapshot_t* ecs_snapshot_take_w_iter(
-    ecs_iter_t *iter,
-    ecs_iter_next_action_t action);
+    ecs_iter_t *iter);
 
 /** Restore a snapshot.
  * This operation restores the world to the state it was in when the specified
@@ -68,8 +76,7 @@ void ecs_snapshot_restore(
  * @return Iterator to snapshot data. */
 FLECS_API
 ecs_iter_t ecs_snapshot_iter(
-    ecs_snapshot_t *snapshot,
-    const ecs_filter_t *filter);
+    ecs_snapshot_t *snapshot);
 
 /** Progress snapshot iterator.
  * 
@@ -80,11 +87,9 @@ FLECS_API
 bool ecs_snapshot_next(
     ecs_iter_t *iter);
 
-
 /** Free snapshot resources.
  * This frees resources associated with a snapshot without restoring it.
  *
- * @param world The world.
  * @param snapshot The snapshot to free. 
  */
 FLECS_API
@@ -96,5 +101,7 @@ void ecs_snapshot_free(
 #endif
 
 #endif
+
+/** @} */
 
 #endif

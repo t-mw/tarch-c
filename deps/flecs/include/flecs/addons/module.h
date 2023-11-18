@@ -1,5 +1,5 @@
 /**
- * @file module.h
+ * @file addons/module.h
  * @brief Module addon.
  *
  * The module addon allows for creating and importing modules. Flecs modules 
@@ -8,6 +8,14 @@
  */
 
 #ifdef FLECS_MODULE
+
+/**
+ * @defgroup c_addons_module Module
+ * @brief Modules organize components, systems and more in reusable units of code.
+ * 
+ * \ingroup c_addons
+ * @{
+ */
 
 #ifndef FLECS_MODULE_H
 #define FLECS_MODULE_H
@@ -31,23 +39,32 @@ extern "C" {
  * A more convenient way to import a module is by using the ECS_IMPORT macro.
  *
  * @param world The world.
- * @param module The module to load.
- * @param module_name The name of the module to load.
- * @param flags An integer that will be passed into the module import action.
- * @param handles_out A struct with handles to the module components/systems.
- * @param handles_size Size of the handles_out parameter.
+ * @param module The module import function.
+ * @param module_name The name of the module.
  * @return The module entity.
  */
 FLECS_API
 ecs_entity_t ecs_import(
     ecs_world_t *world,
     ecs_module_action_t module,
-    const char *module_name,
-    void *handles_out,
-    size_t handles_size);
+    const char *module_name);
 
-/* Import a module from a library.
- * Similar to ecs_import, except that this operation will attempt to load the 
+/** Same as ecs_import, but with name to scope conversion.
+ * PascalCase names are automatically converted to scoped names.
+ *
+ * @param world The world.
+ * @param module The module import function.
+ * @param module_name_c The name of the module.
+ * @return The module entity.
+ */
+FLECS_API
+ecs_entity_t ecs_import_c(
+    ecs_world_t *world,
+    ecs_module_action_t module,
+    const char *module_name_c);
+
+/** Import a module from a library.
+ * Similar to ecs_import, except that this operation will attempt to load the
  * module from a dynamic library.
  *
  * A library may contain multiple modules, which is why both a library name and
@@ -63,7 +80,6 @@ ecs_entity_t ecs_import(
  * @param world The world.
  * @param library_name The name of the library to load.
  * @param module_name The name of the module to load.
- * @param flags The flags to pass to the module.
  */
 FLECS_API
 ecs_entity_t ecs_import_from_library(
@@ -71,111 +87,40 @@ ecs_entity_t ecs_import_from_library(
     const char *library_name,
     const char *module_name);
 
-/** Define module
- */
+/** Register a new module. */
+FLECS_API
+ecs_entity_t ecs_module_init(
+    ecs_world_t *world,
+    const char *c_name,
+    const ecs_component_desc_t *desc);
+
+/** Define module. */
+#define ECS_MODULE_DEFINE(world, id)\
+    {\
+        ecs_component_desc_t desc = {0};\
+        desc.entity = ecs_id(id);\
+        ecs_id(id) = ecs_module_init(world, #id, &desc);\
+        ecs_set_scope(world, ecs_id(id));\
+    }
+
 #define ECS_MODULE(world, id)\
-    ECS_ENTITY_VAR(id) = ecs_new_module(world, 0, #id, sizeof(id), ECS_ALIGNOF(id));\
-    ECS_VECTOR_STACK(FLECS__T##id, ecs_entity_t, &FLECS__E##id, 1);\
-    id *handles = (id*)ecs_get_mut(world, ecs_typeid(id), id, NULL);\
-    (void)ecs_typeid(id);\
-    (void)ecs_type(id);\
-    (void)handles;
+    ecs_entity_t ecs_id(id) = 0; ECS_MODULE_DEFINE(world, id)\
+    (void)ecs_id(id)
 
 /** Wrapper around ecs_import.
  * This macro provides a convenient way to load a module with the world. It can
  * be used like this:
  *
- * ECS_IMPORT(world, FlecsSystemsPhysics, 0);
- * 
- * This macro will define entity and type handles for the component associated
- * with the module. An application can retrieve the module component like this:
- * 
- * FlecsSystemsPhysics m = ecs_get(world, EcsSingleton, FlecsSystemsPhysics);
- * 
- * The contents of a module component are module specific, although they
- * typically contain handles to the content of the module.
+ * ECS_IMPORT(world, FlecsSystemsPhysics);
  */
-#define ECS_IMPORT(world, id) \
-    id ecs_module(id);\
-    char *id##__name = ecs_module_path_from_c(#id);\
-    ECS_ENTITY_VAR(id) = ecs_import(\
-        world, id##Import, id##__name, &ecs_module(id), sizeof(id));\
-    ecs_os_free(id##__name);\
-    ECS_VECTOR_STACK(FLECS__T##id, ecs_entity_t, &FLECS__E##id, 1);\
-    id##ImportHandles(ecs_module(id));\
-    (void)ecs_typeid(id);\
-    (void)ecs_type(id);\
-
-/** Declare type variable */
-#define ECS_TYPE_VAR(id)\
-    ecs_type_t ecs_type(id)
-
-/** Declare entity variable */
-#define ECS_ENTITY_VAR(id)\
-    ecs_entity_t ecs_typeid(id)
-
-/** Utility macro for declaring a component inside a handles type */
-#define ECS_DECLARE_COMPONENT(id)\
-    ECS_ENTITY_VAR(id);\
-    ECS_TYPE_VAR(id)
-
-/** Utility macro for declaring an entity inside a handles type */
-#define ECS_DECLARE_ENTITY(id)\
-    ecs_entity_t id;\
-    ECS_TYPE_VAR(id)
-
-/** Utility macro for declaring a type inside a handles type */
-#define ECS_DECLARE_TYPE(id)\
-    ECS_DECLARE_ENTITY(id)
-
-/** Utility macro for setting a component in a module function */
-#define ECS_SET_COMPONENT(id)\
-    if (handles) handles->ecs_typeid(id) = ecs_typeid(id);\
-    if (handles) handles->ecs_type(id) = ecs_type(id)
-
-/** Utility macro for setting an entity in a module function */
-#define ECS_SET_ENTITY(id)\
-    if (handles) handles->id = id;
-
-/** Utility macro for setting a type in a module function */
-#define ECS_SET_TYPE(id)\
-    if (handles) handles->id = id;\
-    if (handles) handles->ecs_type(id) = ecs_type(id);
-
-#define ECS_EXPORT_COMPONENT(id)\
-    ECS_SET_COMPONENT(id)
-
-#define ECS_EXPORT_ENTITY(id)\
-    ECS_SET_ENTITY(id)
-
-#define ECS_EXPORT_TYPE(id)\
-    ECS_SET_TYPE(id)
-
-/** Utility macro for importing a component */
-#define ECS_IMPORT_COMPONENT(handles, id)\
-    ECS_ENTITY_VAR(id) = (handles).ecs_typeid(id); (void)ecs_typeid(id);\
-    ECS_VECTOR_STACK(FLECS__T##id, ecs_entity_t, &FLECS__E##id, 1);\
-    (void)ecs_typeid(id);\
-    (void)ecs_type(id)
-
-/** Utility macro for importing an entity */
-#define ECS_IMPORT_ENTITY(handles, id)\
-    ecs_entity_t id = (handles).id;\
-    ECS_VECTOR_STACK(FLECS__T##id, ecs_entity_t, &id, 1);\
-    (void)id;\
-    (void)ecs_type(id)
-
-/** Utility macro for importing a type */
-#define ECS_IMPORT_TYPE(handles, id)\
-    ecs_entity_t id = (handles).id;\
-    ecs_type_t ecs_type(id) = (handles).ecs_type(id);\
-    (void)id;\
-    (void)ecs_type(id)
+#define ECS_IMPORT(world, id) ecs_import_c(world, id##Import, #id)
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
+
+/** @} */
 
 #endif

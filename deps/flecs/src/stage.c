@@ -1,194 +1,283 @@
+/**
+ * @file stage.c
+ * @brief Staging implementation.
+ * 
+ * A stage is an object that can be used to temporarily store mutations to a
+ * world while a world is in readonly mode. ECS operations that are invoked on
+ * a stage are stored in a command buffer, which is flushed during sync points,
+ * or manually by the user.
+ * 
+ * Stages contain additional state to enable other API functionality without
+ * having to mutate the world, such as setting the current scope, and allocators
+ * that are local to a stage.
+ * 
+ * In a multi threaded application, each thread has its own stage which allows
+ * threads to insert mutations without having to lock administration.
+ */
+
 #include "private_api.h"
 
 static
-ecs_op_t* new_defer_op(ecs_stage_t *stage) {
-    ecs_op_t *result = ecs_vector_add(&stage->defer_queue, ecs_op_t);
-    ecs_os_memset(result, 0, ECS_SIZEOF(ecs_op_t));
-    return result;
-}
-
-static 
-void new_defer_component_ids(
-    ecs_op_t *op, 
-    ecs_entities_t *components)
+ecs_cmd_t* flecs_cmd_new(
+    ecs_stage_t *stage)
 {
-    int32_t components_count = components->count;
-    if (components_count == 1) {
-        ecs_entity_t component = components->array[0];
-        op->component = component;
-        op->components = (ecs_entities_t) {
-            .array = NULL,
-            .count = 1
-        };
-    } else if (components_count) {
-        ecs_size_t array_size = components_count * ECS_SIZEOF(ecs_entity_t);
-        op->components.array = ecs_os_malloc(array_size);
-        ecs_os_memcpy(op->components.array, components->array, array_size);
-        op->components.count = components_count;
-    } else {
-        op->component = 0;
-        op->components = (ecs_entities_t){ 0 };
-    }
+    ecs_cmd_t *cmd = ecs_vec_append_t(&stage->allocator, &stage->cmd->queue, 
+        ecs_cmd_t);
+    cmd->is._1.value = NULL;
+    cmd->next_for_entity = 0;
+    cmd->entry = NULL;
+    return cmd;
 }
 
 static
-bool defer_add_remove(
-    ecs_world_t *world,
-    ecs_stage_t *stage,
-    ecs_op_kind_t op_kind,
-    ecs_entity_t entity,
-    ecs_entities_t *components)
+ecs_cmd_t* flecs_cmd_new_batched(
+    ecs_stage_t *stage, 
+    ecs_entity_t e)
 {
-    if (stage->defer) {
-        ecs_entity_t scope = stage->scope;
-        if (components) {
-            if (!components->count && !scope) {
-                return true;
+    ecs_vec_t *cmds = &stage->cmd->queue;
+    ecs_cmd_entry_t *entry = flecs_sparse_get_any_t(
+        &stage->cmd->entries, ecs_cmd_entry_t, e);
+
+    int32_t cur = ecs_vec_count(cmds);
+    ecs_cmd_t *cmd = flecs_cmd_new(stage);
+    if (entry) {
+        if (entry->first == -1) {
+            /* Existing but invalidated entry */
+            entry->first = cur;
+            cmd->entry = entry;
+        } else {
+            int32_t last = entry->last;
+            ecs_cmd_t *arr = ecs_vec_first_t(cmds, ecs_cmd_t);
+            ecs_assert(arr[last].entity == e, ECS_INTERNAL_ERROR, NULL);
+            ecs_cmd_t *last_op = &arr[last];
+            last_op->next_for_entity = cur;
+            if (last == entry->first) {
+                /* Flip sign bit so flush logic can tell which command
+                 * is the first for an entity */
+                last_op->next_for_entity *= -1;
             }
         }
-
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = op_kind;
-        op->scope = scope;
-        op->is._1.entity = entity;
-
-        new_defer_component_ids(op, components);
-
-        if (op_kind == EcsOpNew) {
-            world->new_count ++;
-        } else if (op_kind == EcsOpAdd) {
-            world->add_count ++;
-        } else if (op_kind == EcsOpRemove) {
-            world->remove_count ++;
-        }
-
-        return true;
     } else {
-        stage->defer ++;
+        cmd->entry = entry = flecs_sparse_ensure_fast_t(
+            &stage->cmd->entries, ecs_cmd_entry_t, e);
+        entry->first = cur;
     }
-    
-    return false;
+
+    entry->last = cur;
+
+    return cmd;
 }
 
-bool ecs_defer_none(
+static
+void flecs_stages_merge(
+    ecs_world_t *world,
+    bool force_merge)
+{
+    bool is_stage = ecs_poly_is(world, ecs_stage_t);
+    ecs_stage_t *stage = flecs_stage_from_world(&world);
+
+    bool measure_frame_time = ECS_BIT_IS_SET(world->flags, 
+        EcsWorldMeasureFrameTime);
+
+    ecs_time_t t_start = {0};
+    if (measure_frame_time) {
+        ecs_os_get_time(&t_start);
+    }
+
+    ecs_dbg_3("#[magenta]merge");
+    ecs_log_push_3();
+
+    if (is_stage) {
+        /* Check for consistency if force_merge is enabled. In practice this
+         * function will never get called with force_merge disabled for just
+         * a single stage. */
+        if (force_merge || stage->auto_merge) {
+            ecs_assert(stage->defer == 1, ECS_INVALID_OPERATION, 
+                "mismatching defer_begin/defer_end detected");
+            flecs_defer_end(world, stage);
+        }
+    } else {
+        /* Merge stages. Only merge if the stage has auto_merging turned on, or 
+         * if this is a forced merge (like when ecs_merge is called) */
+        int32_t i, count = ecs_get_stage_count(world);
+        for (i = 0; i < count; i ++) {
+            ecs_stage_t *s = (ecs_stage_t*)ecs_get_stage(world, i);
+            ecs_poly_assert(s, ecs_stage_t);
+            if (force_merge || s->auto_merge) {
+                flecs_defer_end(world, s);
+            }
+        }
+    }
+
+    flecs_eval_component_monitors(world);
+
+    if (measure_frame_time) {
+        world->info.merge_time_total += (ecs_ftime_t)ecs_time_measure(&t_start);
+    }
+
+    world->info.merge_count_total ++; 
+
+    /* If stage is asynchronous, deferring is always enabled */
+    if (stage->async) {
+        flecs_defer_begin(world, stage);
+    }
+    
+    ecs_log_pop_3();
+}
+
+static
+void flecs_stage_auto_merge(
+    ecs_world_t *world)
+{
+    flecs_stages_merge(world, false);
+}
+
+static
+void flecs_stage_manual_merge(
+    ecs_world_t *world)
+{
+    flecs_stages_merge(world, true);
+}
+
+bool flecs_defer_begin(
     ecs_world_t *world,
     ecs_stage_t *stage)
 {
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_poly_assert(stage, ecs_stage_t);
     (void)world;
+    if (stage->defer < 0) return false;
     return (++ stage->defer) == 1;
 }
 
-bool ecs_defer_modified(
-    ecs_world_t *world,
-    ecs_stage_t *stage,
-    ecs_entity_t entity,
-    ecs_entity_t component)
+bool flecs_defer_cmd(
+    ecs_stage_t *stage)
 {
-    (void)world;
     if (stage->defer) {
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = EcsOpModified;
-        op->component = component;
-        op->is._1.entity = entity;
-        return true;
-    } else {
-        stage->defer ++;
+        return (stage->defer > 0);
     }
-    
+
+    stage->defer ++;
     return false;
 }
 
-bool ecs_defer_clone(
-    ecs_world_t *world,
+bool flecs_defer_modified(
+    ecs_stage_t *stage,
+    ecs_entity_t entity,
+    ecs_id_t id)
+{
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new_batched(stage, entity);
+        if (cmd) {
+            cmd->kind = EcsCmdModified;
+            cmd->id = id;
+            cmd->entity = entity;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool flecs_defer_clone(
     ecs_stage_t *stage,
     ecs_entity_t entity,
     ecs_entity_t src,
     bool clone_value)
 {   
-    (void)world;
-    if (stage->defer) {
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = EcsOpClone;
-        op->component = src;
-        op->is._1.entity = entity;
-        op->is._1.clone_value = clone_value;
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = EcsCmdClone;
+        cmd->id = src;
+        cmd->entity = entity;
+        cmd->is._1.clone_value = clone_value;
         return true;
-    } else {
-        stage->defer ++;
     }
-    
     return false;   
 }
 
-bool ecs_defer_delete(
-    ecs_world_t *world,
+bool flecs_defer_path(
     ecs_stage_t *stage,
-    ecs_entity_t entity)
+    ecs_entity_t parent,
+    ecs_entity_t entity,
+    const char *name)
 {
-    (void)world;
-    if (stage->defer) {
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = EcsOpDelete;
-        op->is._1.entity = entity;
-        world->delete_count ++;
+    if (stage->defer > 0) {
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = EcsCmdPath;
+        cmd->entity = entity;
+        cmd->id = parent;
+        cmd->is._1.value = ecs_os_strdup(name);
         return true;
-    } else {
-        stage->defer ++;
     }
     return false;
 }
 
-bool ecs_defer_clear(
-    ecs_world_t *world,
+bool flecs_defer_delete(
     ecs_stage_t *stage,
     ecs_entity_t entity)
 {
-    (void)world;
-    if (stage->defer) {
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = EcsOpClear;
-        op->is._1.entity = entity;
-        world->clear_count ++;
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = EcsCmdDelete;
+        cmd->entity = entity;
         return true;
-    } else {
-        stage->defer ++;
     }
     return false;
 }
 
-bool ecs_defer_enable(
-    ecs_world_t *world,
+bool flecs_defer_clear(
+    ecs_stage_t *stage,
+    ecs_entity_t entity)
+{
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new_batched(stage, entity);
+        cmd->kind = EcsCmdClear;
+        cmd->entity = entity;
+        return true;
+    }
+    return false;
+}
+
+bool flecs_defer_on_delete_action(
+    ecs_stage_t *stage,
+    ecs_id_t id,
+    ecs_entity_t action)
+{
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = EcsCmdOnDeleteAction;
+        cmd->id = id;
+        cmd->entity = action;
+        return true;
+    }
+    return false;
+}
+
+bool flecs_defer_enable(
     ecs_stage_t *stage,
     ecs_entity_t entity,
-    ecs_entity_t component,
+    ecs_id_t id,
     bool enable)
 {
-    (void)world;
-    if (stage->defer) {
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = enable ? EcsOpEnable : EcsOpDisable;
-        op->is._1.entity = entity;
-        op->component = component;
+    if (flecs_defer_cmd(stage)) {
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = enable ? EcsCmdEnable : EcsCmdDisable;
+        cmd->entity = entity;
+        cmd->id = id;
         return true;
-    } else {
-        stage->defer ++;
     }
     return false;
 }
 
-bool ecs_defer_bulk_new(
+bool flecs_defer_bulk_new(
     ecs_world_t *world,
     ecs_stage_t *stage,
     int32_t count,
-    ecs_entities_t *components_ids,
-    void **component_data,
+    ecs_id_t id,
     const ecs_entity_t **ids_out)
 {
-    if (stage->defer) {
+    if (flecs_defer_cmd(stage)) {
         ecs_entity_t *ids = ecs_os_malloc(count * ECS_SIZEOF(ecs_entity_t));
-        void **defer_data = NULL;
-
-        world->bulk_new_count ++;
 
         /* Use ecs_new_id as this is thread safe */
         int i;
@@ -196,227 +285,655 @@ bool ecs_defer_bulk_new(
             ids[i] = ecs_new_id(world);
         }
 
-        /* Create private copy for component data */
-        if (component_data) {
-            int c, c_count = components_ids->count;
-            ecs_entity_t *components = components_ids->array;
-            defer_data = ecs_os_malloc(ECS_SIZEOF(void*) * c_count);
-            for (c = 0; c < c_count; c ++) {
-                ecs_entity_t comp = components[c];
-                const EcsComponent *cptr = ecs_component_from_id(world, comp);
-                ecs_assert(cptr != NULL, ECS_INVALID_PARAMETER, NULL);
-
-                ecs_size_t size = cptr->size;
-                void *data = ecs_os_malloc(size * count);
-                defer_data[c] = data;
-
-                ecs_c_info_t *cinfo = NULL;
-                ecs_entity_t real_id = ecs_get_typeid(world, comp);
-                if (real_id) {
-                    cinfo = ecs_get_c_info(world, real_id);
-                }
-                ecs_xtor_t ctor;
-                if (cinfo && (ctor = cinfo->lifecycle.ctor)) {
-                    void *ctx = cinfo->lifecycle.ctx;
-                    ctor(world, comp, ids, data, ecs_to_size_t(size), count, ctx);
-                    ecs_move_t move;
-                    if ((move = cinfo->lifecycle.move)) {
-                        move(world, comp, ids, ids, data, component_data[c], 
-                            ecs_to_size_t(size), count, ctx);
-                    } else {
-                        ecs_os_memcpy(data, component_data[c], size * count);
-                    }
-                } else {
-                    ecs_os_memcpy(data, component_data[c], size * count);
-                }
-            }
-        }
-
-        /* Store data in op */
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = EcsOpBulkNew;
-        op->is._n.entities = ids;
-        op->is._n.bulk_data = defer_data;
-        op->is._n.count = count;
-        new_defer_component_ids(op, components_ids);
         *ids_out = ids;
 
+        /* Store data in op */
+        ecs_cmd_t *cmd = flecs_cmd_new(stage);
+        cmd->kind = EcsCmdBulkNew;
+        cmd->id = id;
+        cmd->is._n.entities = ids;
+        cmd->is._n.count = count;
+        cmd->entity = 0;
         return true;
-    } else {
-        stage->defer ++;
     }
-
     return false;
 }
 
-bool ecs_defer_new(
-    ecs_world_t *world,
+bool flecs_defer_add(
     ecs_stage_t *stage,
     ecs_entity_t entity,
-    ecs_entities_t *components)
-{   
-    return defer_add_remove(world, stage, EcsOpNew, entity, components);
-}
-
-bool ecs_defer_add(
-    ecs_world_t *world,
-    ecs_stage_t *stage,
-    ecs_entity_t entity,
-    ecs_entities_t *components)
-{   
-    return defer_add_remove(world, stage, EcsOpAdd, entity, components);
-}
-
-bool ecs_defer_remove(
-    ecs_world_t *world,
-    ecs_stage_t *stage,
-    ecs_entity_t entity,
-    ecs_entities_t *components)
+    ecs_id_t id)
 {
-    return defer_add_remove(world, stage, EcsOpRemove, entity, components);
+    if (flecs_defer_cmd(stage)) {
+        ecs_assert(id != 0, ECS_INTERNAL_ERROR, NULL);
+        ecs_cmd_t *cmd = flecs_cmd_new_batched(stage, entity);
+        cmd->kind = EcsCmdAdd;
+        cmd->id = id;
+        cmd->entity = entity;
+        return true;
+    }
+    return false;
 }
 
-bool ecs_defer_set(
+bool flecs_defer_remove(
+    ecs_stage_t *stage,
+    ecs_entity_t entity,
+    ecs_id_t id)
+{
+    if (flecs_defer_cmd(stage)) {
+        ecs_assert(id != 0, ECS_INTERNAL_ERROR, NULL);
+        ecs_cmd_t *cmd = flecs_cmd_new_batched(stage, entity); 
+        cmd->kind = EcsCmdRemove;
+        cmd->id = id;
+        cmd->entity = entity;
+        return true;
+    }
+    return false;
+}
+
+void* flecs_defer_set(
     ecs_world_t *world,
     ecs_stage_t *stage,
-    ecs_op_kind_t op_kind,
+    ecs_cmd_kind_t cmd_kind,
     ecs_entity_t entity,
-    ecs_entity_t component,
+    ecs_id_t id,
     ecs_size_t size,
-    const void *value,
-    void **value_out,
-    bool *is_added)
+    void *value)
 {
-    if (stage->defer) {
-        world->set_count ++;
-        if (!size) {
-            const EcsComponent *cptr = ecs_component_from_id(world, component);
-            ecs_assert(cptr != NULL, ECS_INVALID_PARAMETER, NULL);
-            size = cptr->size;
+    ecs_cmd_t *cmd = flecs_cmd_new_batched(stage, entity);
+
+    /* Find type info for id */
+    const ecs_type_info_t *ti = NULL;
+    ecs_id_record_t *idr = flecs_id_record_get(world, id);
+    if (!idr) {
+        /* If idr doesn't exist yet, create it but only if the 
+         * application is not multithreaded. */
+        if (stage->async || (world->flags & EcsWorldMultiThreaded)) {
+            ti = ecs_get_type_info(world, id);
+            ecs_assert(ti != NULL, ECS_INVALID_PARAMETER, NULL);
+        } else {
+            /* When not in multi threaded mode, it's safe to find or 
+             * create the id record. */
+            idr = flecs_id_record_ensure(world, id);
+            ecs_assert(idr != NULL, ECS_INTERNAL_ERROR, NULL);
+            
+            /* Get type_info from id record. We could have called 
+             * ecs_get_type_info directly, but since this function can be
+             * expensive for pairs, creating the id record ensures we can
+             * find the type_info quickly for subsequent operations. */
+            ti = idr->type_info;
         }
+    } else {
+        ti = idr->type_info;
+    }
 
-        ecs_op_t *op = new_defer_op(stage);
-        op->kind = op_kind;
-        op->component = component;
-        op->is._1.entity = entity;
-        op->is._1.size = size;
-        op->is._1.value = ecs_os_malloc(size);
+    /* If the id isn't associated with a type, we can't set anything */
+    ecs_check(ti != NULL, ECS_INVALID_PARAMETER, NULL);
 
-        if (!value) {
-            value = ecs_get_w_entity(world, entity, component);
-            if (is_added) {
-                *is_added = value == NULL;
+    /* Make sure the size of the value equals the type size */
+    ecs_assert(!size || size == ti->size, ECS_INVALID_PARAMETER, NULL);
+    size = ti->size;
+
+    /* Find existing component. Make sure it's owned, so that we won't use the
+     * component of a prefab. */
+    void *existing = NULL;
+    ecs_table_t *table = NULL;
+    if (idr) {
+        /* Entity can only have existing component if id record exists */
+        ecs_record_t *r = flecs_entities_get(world, entity);
+        table = r->table;
+        if (r && table) {
+            const ecs_table_record_t *tr = flecs_id_record_get_table(
+                idr, table);
+            if (tr) {
+                ecs_assert(tr->column != -1, ECS_NOT_A_COMPONENT, NULL);
+                /* Entity has the component */
+                ecs_vec_t *column = &table->data.columns[tr->column].data;
+                existing = ecs_vec_get(column, size, ECS_RECORD_TO_ROW(r->row));
             }
         }
+    }
 
-        ecs_c_info_t *c_info = NULL;
-        ecs_entity_t real_id = ecs_get_typeid(world, component);
-        if (real_id) {
-            c_info = ecs_get_c_info(world, real_id);
-        }
-        ecs_xtor_t ctor;
-        if (c_info && (ctor = c_info->lifecycle.ctor)) {
-            ctor(world, component, &entity, op->is._1.value, 
-                ecs_to_size_t(size), 1, c_info->lifecycle.ctx);
+    /* Get existing value from storage */
+    void *cmd_value = existing;
+    bool emplace = cmd_kind == EcsCmdEmplace;
 
-            ecs_copy_t copy;
-            if (value) {
-                if ((copy = c_info->lifecycle.copy)) {
-                    copy(world, component, &entity, &entity, op->is._1.value, value, 
-                        ecs_to_size_t(size), 1, c_info->lifecycle.ctx);
+    /* If the component does not yet exist, create a temporary value. This is
+     * necessary so we can store a component value in the deferred command,
+     * without adding the component to the entity which is not allowed in 
+     * deferred mode. */
+    if (!existing) {
+        ecs_stack_t *stack = &stage->cmd->stack;
+        cmd_value = flecs_stack_alloc(stack, size, ti->alignment);
+
+        /* If the component doesn't yet exist, construct it and move the 
+         * provided value into the component, if provided. Don't construct if
+         * this is an emplace operation, in which case the application is
+         * responsible for constructing. */
+        if (value) {
+            if (emplace) {
+                ecs_move_t move = ti->hooks.move_ctor;
+                if (move) {
+                    move(cmd_value, value, 1, ti);
                 } else {
-                    ecs_os_memcpy(op->is._1.value, value, size);
+                    ecs_os_memcpy(cmd_value, value, size);
+                }
+            } else {
+                ecs_copy_t copy = ti->hooks.copy_ctor;
+                if (copy) {
+                    copy(cmd_value, value, 1, ti);
+                } else {
+                    ecs_os_memcpy(cmd_value, value, size);
                 }
             }
-        } else if (value) {
-            ecs_os_memcpy(op->is._1.value, value, size);
-        }
-        
-        if (value_out) {
-            *value_out = op->is._1.value;
-        }
+        } else if (!emplace) {
+            /* If the command is not an emplace, construct the temp storage */
 
-        return true;
+            /* Check if entity inherits component */
+            void *base = NULL;
+            if (table && (table->flags & EcsTableHasIsA)) {
+                base = flecs_get_base_component(world, table, id, idr, 0);
+            }
+
+            if (!base) {
+                /* Normal ctor */
+                ecs_xtor_t ctor = ti->hooks.ctor;
+                if (ctor) {
+                    ctor(cmd_value, 1, ti);
+                }
+            } else {
+                /* Override */
+                ecs_copy_t copy = ti->hooks.copy_ctor;
+                if (copy) {
+                    copy(cmd_value, base, 1, ti);
+                } else {
+                    ecs_os_memcpy(cmd_value, base, size);
+                }
+            }
+        }
+    } else if (value) {
+        /* If component exists and value is provided, copy */
+        ecs_copy_t copy = ti->hooks.copy;
+        if (copy) {
+            copy(existing, value, 1, ti);
+        } else {
+            ecs_os_memcpy(existing, value, size);
+        }
+    }
+
+    if (!cmd) {
+        /* If cmd is NULL, entity was already deleted. Check if we need to
+         * insert a command into the queue. */
+        if (!ti->hooks.dtor) {
+            /* If temporary memory does not need to be destructed, it'll get 
+             * freed when the stack allocator is reset. This prevents us
+             * from having to insert a command when the entity was 
+             * already deleted. */
+            return cmd_value;
+        }
+        cmd = flecs_cmd_new(stage);
+    }
+
+    if (!existing) {
+        /* If component didn't exist yet, insert command that will create it */
+        cmd->kind = cmd_kind;
+        cmd->id = id;
+        cmd->idr = idr;
+        cmd->entity = entity;
+        cmd->is._1.size = size;
+        cmd->is._1.value = cmd_value;
     } else {
-        stage->defer ++;
+        /* If component already exists, still insert an Add command to ensure
+         * that any preceding remove commands won't remove the component. If the
+         * operation is a set, also insert a Modified command. */
+        if (cmd_kind == EcsCmdSet) {
+            cmd->kind = EcsCmdAddModified; 
+        } else {
+            cmd->kind = EcsCmdAdd;
+        }
+        cmd->id = id;
+        cmd->entity = entity;
     }
-    
-    return false;
+
+    return cmd_value;
+error:
+    return NULL;
 }
 
-void ecs_stage_merge(
+void flecs_enqueue(
     ecs_world_t *world,
-    ecs_stage_t *stage)
+    ecs_stage_t *stage,
+    ecs_event_desc_t *desc)
 {
-    ecs_assert(stage != &world->stage, ECS_INTERNAL_ERROR, NULL);
+    ecs_cmd_t *cmd = flecs_cmd_new(stage);
+    cmd->kind = EcsCmdEvent;
+    cmd->entity = desc->entity;
 
-    ecs_assert(stage->defer == 0, ECS_INVALID_PARAMETER, NULL);
-    if (ecs_vector_count(stage->defer_merge_queue)) {
-        stage->defer ++;
-        stage->defer_queue = stage->defer_merge_queue;
-        ecs_defer_flush(world, stage);
-        ecs_vector_clear(stage->defer_merge_queue);
-        ecs_assert(stage->defer_queue == NULL, ECS_INVALID_PARAMETER, NULL);
-    }    
-}
+    ecs_stack_t *stack = &stage->cmd->stack;
+    ecs_event_desc_t *desc_cmd = flecs_stack_alloc_t(stack, ecs_event_desc_t);
+    ecs_os_memcpy_t(desc_cmd, desc, ecs_event_desc_t);
 
-bool ecs_stage_defer_begin(
-    ecs_world_t *world,
-    ecs_stage_t *stage)
-{   
-    (void)world; 
-    if (ecs_defer_none(world, stage)) {
-        stage->defer_queue = stage->defer_merge_queue;    
-        return true;  
+    if (desc->ids && desc->ids->count != 0) {
+        ecs_type_t *type_cmd = flecs_stack_alloc_t(stack, ecs_type_t);
+        int32_t id_count = desc->ids->count;
+        type_cmd->count = id_count;
+        type_cmd->array = flecs_stack_alloc_n(stack, ecs_id_t, id_count);
+        ecs_os_memcpy_n(type_cmd->array, desc->ids->array, ecs_id_t, id_count);
+        desc_cmd->ids = type_cmd;
+    } else {
+        desc_cmd->ids = NULL;
     }
-    return false;
-}
 
-bool ecs_stage_defer_end(
-    ecs_world_t *world,
-    ecs_stage_t *stage)
-{ 
-    (void)world;
-    stage->defer --;
-    if (!stage->defer) {
-        stage->defer_merge_queue = stage->defer_queue;
-        stage->defer_queue = NULL;
-        return true;
+    cmd->is._1.value = desc_cmd;
+
+    if (desc->param || desc->const_param) {
+        ecs_assert(!(desc->const_param && desc->param), ECS_INVALID_PARAMETER, 
+            "cannot set param and const_param at the same time");
+
+        const ecs_type_info_t *ti = ecs_get_type_info(world, desc->event);
+        ecs_assert(ti != NULL, ECS_INVALID_PARAMETER, 
+            "can only enqueue events with data for events that are components");
+
+        void *param_cmd = flecs_stack_alloc(stack, ti->size, ti->alignment);
+        ecs_assert(param_cmd != NULL, ECS_INTERNAL_ERROR, NULL);
+        if (desc->param) {
+            if (ti->hooks.move_ctor) {
+                ti->hooks.move_ctor(param_cmd, desc->param, 1, ti);
+            } else {
+                ecs_os_memcpy(param_cmd, desc->param, ti->size);
+            }
+        } else {
+            if (ti->hooks.copy_ctor) {
+                ti->hooks.copy_ctor(param_cmd, desc->const_param, 1, ti);
+            } else {
+                ecs_os_memcpy(param_cmd, desc->const_param, ti->size);
+            }
+        }
+
+        desc_cmd->param = param_cmd;
+        desc_cmd->const_param = NULL;
     }
-    return false;
 }
 
-void ecs_stage_merge_post_frame(
+void flecs_stage_merge_post_frame(
     ecs_world_t *world,
     ecs_stage_t *stage)
 {
     /* Execute post frame actions */
-    ecs_vector_each(stage->post_frame_actions, ecs_action_elem_t, action, {
-        action->action(world, action->ctx);
-    });
+    int32_t i, count = ecs_vec_count(&stage->post_frame_actions);
+    ecs_action_elem_t *elems = ecs_vec_first(&stage->post_frame_actions);
+    for (i = 0; i < count; i ++) {
+        elems[i].action(world, elems[i].ctx);
+    }
 
-    ecs_vector_free(stage->post_frame_actions);
-    stage->post_frame_actions = NULL;
+    ecs_vec_clear(&stage->post_frame_actions);
 }
 
-void ecs_stage_init(
+static
+void flecs_commands_init(
+    ecs_stage_t *stage,
+    ecs_commands_t *cmd)
+{
+    flecs_stack_init(&cmd->stack);
+    ecs_vec_init_t(&stage->allocator, &cmd->queue, ecs_cmd_t, 0);
+    flecs_sparse_init_t(&cmd->entries, &stage->allocator,
+        &stage->allocators.cmd_entry_chunk, ecs_cmd_entry_t);
+}
+
+static
+void flecs_commands_fini(
+    ecs_stage_t *stage,
+    ecs_commands_t *cmd)
+{
+    /* Make sure stage has no unmerged data */
+    ecs_assert(ecs_vec_count(&stage->cmd->queue) == 0, ECS_INTERNAL_ERROR, NULL);
+
+    flecs_stack_fini(&cmd->stack);
+    ecs_vec_fini_t(&stage->allocator, &cmd->queue, ecs_cmd_t);
+    flecs_sparse_fini(&cmd->entries);
+}
+
+void flecs_commands_push(
+    ecs_stage_t *stage)
+{
+    int32_t sp = ++ stage->cmd_sp;
+    ecs_assert(sp < ECS_MAX_DEFER_STACK, ECS_INTERNAL_ERROR, NULL);
+    stage->cmd = &stage->cmd_stack[sp];
+}
+
+void flecs_commands_pop(
+    ecs_stage_t *stage)
+{
+    int32_t sp = -- stage->cmd_sp;
+    ecs_assert(sp >= 0, ECS_INTERNAL_ERROR, NULL);
+    stage->cmd = &stage->cmd_stack[sp];
+}
+
+void flecs_stage_init(
     ecs_world_t *world,
     ecs_stage_t *stage)
 {
-    memset(stage, 0, sizeof(ecs_stage_t));
-    if (stage == &world->stage) {
-        stage->id = 0;
-    } else if (stage == &world->temp_stage) {
-        stage->id = 1;
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_poly_init(stage, ecs_stage_t);
+
+    stage->world = world;
+    stage->thread_ctx = world;
+    stage->auto_merge = true;
+    stage->async = false;
+
+    flecs_stack_init(&stage->allocators.iter_stack);
+    flecs_stack_init(&stage->allocators.deser_stack);
+    flecs_allocator_init(&stage->allocator);
+    flecs_ballocator_init_n(&stage->allocators.cmd_entry_chunk, ecs_cmd_entry_t,
+        FLECS_SPARSE_PAGE_SIZE);
+
+    ecs_allocator_t *a = &stage->allocator;
+    ecs_vec_init_t(a, &stage->post_frame_actions, ecs_action_elem_t, 0);
+
+    int32_t i;
+    for (i = 0; i < ECS_MAX_DEFER_STACK; i ++) {
+        flecs_commands_init(stage, &stage->cmd_stack[i]);
     }
+
+    stage->cmd = &stage->cmd_stack[0];
 }
 
-void ecs_stage_deinit(
+void flecs_stage_fini(
     ecs_world_t *world,
     ecs_stage_t *stage)
 {
     (void)world;
-    ecs_vector_free(stage->defer_queue);
-    ecs_vector_free(stage->defer_merge_queue);
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_poly_assert(stage, ecs_stage_t);
+
+    ecs_poly_fini(stage, ecs_stage_t);
+
+    ecs_allocator_t *a = &stage->allocator;
+    
+    ecs_vec_fini_t(a, &stage->post_frame_actions, ecs_action_elem_t);
+    ecs_vec_fini(NULL, &stage->variables, 0);
+    ecs_vec_fini(NULL, &stage->operations, 0);
+
+    int32_t i;
+    for (i = 0; i < ECS_MAX_DEFER_STACK; i ++) {
+        flecs_commands_fini(stage, &stage->cmd_stack[i]);
+    }
+
+    flecs_stack_fini(&stage->allocators.iter_stack);
+    flecs_stack_fini(&stage->allocators.deser_stack);
+    flecs_ballocator_fini(&stage->allocators.cmd_entry_chunk);
+    flecs_allocator_fini(&stage->allocator);
 }
 
+void ecs_set_stage_count(
+    ecs_world_t *world,
+    int32_t stage_count)
+{
+    ecs_poly_assert(world, ecs_world_t);
+
+    /* World must have at least one default stage */
+    ecs_assert(stage_count >= 1 || (world->flags & EcsWorldFini), 
+        ECS_INTERNAL_ERROR, NULL);
+
+    bool auto_merge = true;
+    const ecs_entity_t *lookup_path = NULL;
+    ecs_entity_t scope = 0;
+    ecs_entity_t with = 0;
+    if (world->stage_count >= 1) {
+        auto_merge = world->stages[0].auto_merge;
+        lookup_path = world->stages[0].lookup_path;
+        scope = world->stages[0].scope;
+        with = world->stages[0].with;
+    }
+
+    int32_t i, count = world->stage_count;
+    if (count && count != stage_count) {
+        ecs_stage_t *stages = world->stages;
+
+        for (i = 0; i < count; i ++) {
+            /* If stage contains a thread handle, ecs_set_threads was used to
+             * create the stages. ecs_set_threads and ecs_set_stage_count should not
+             * be mixed. */
+            ecs_poly_assert(&stages[i], ecs_stage_t);
+            ecs_check(stages[i].thread == 0, ECS_INVALID_OPERATION, NULL);
+            flecs_stage_fini(world, &stages[i]);
+        }
+
+        ecs_os_free(world->stages);
+    }
+
+    if (stage_count) {
+        world->stages = ecs_os_malloc_n(ecs_stage_t, stage_count);
+
+        for (i = 0; i < stage_count; i ++) {
+            ecs_stage_t *stage = &world->stages[i];
+            flecs_stage_init(world, stage);
+            stage->id = i;
+
+            /* Set thread_ctx to stage, as this stage might be used in a
+             * multithreaded context */
+            stage->thread_ctx = (ecs_world_t*)stage;
+            stage->thread = 0;
+        }
+    } else {
+        /* Set to NULL to prevent double frees */
+        world->stages = NULL;
+    }
+
+    /* Regardless of whether the stage was just initialized or not, when the
+     * ecs_set_stage_count function is called, all stages inherit the auto_merge
+     * property from the world */
+    for (i = 0; i < stage_count; i ++) {
+        world->stages[i].auto_merge = auto_merge;
+        world->stages[i].lookup_path = lookup_path;
+        world->stages[0].scope = scope;
+        world->stages[0].with = with;
+    }
+
+    world->stage_count = stage_count;
+error:
+    return;
+}
+
+int32_t ecs_get_stage_count(
+    const ecs_world_t *world)
+{
+    world = ecs_get_world(world);
+    return world->stage_count;
+}
+
+int32_t ecs_get_stage_id(
+    const ecs_world_t *world)
+{
+    ecs_check(world != NULL, ECS_INVALID_PARAMETER, NULL);
+
+    if (ecs_poly_is(world, ecs_stage_t)) {
+        ecs_stage_t *stage = ECS_CONST_CAST(ecs_stage_t*, world);
+
+        /* Index 0 is reserved for main stage */
+        return stage->id;
+    } else if (ecs_poly_is(world, ecs_world_t)) {
+        return 0;
+    } else {
+        ecs_throw(ECS_INTERNAL_ERROR, NULL);
+    }
+error:
+    return 0;
+}
+
+ecs_world_t* ecs_get_stage(
+    const ecs_world_t *world,
+    int32_t stage_id)
+{
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_check(world->stage_count > stage_id, ECS_INVALID_PARAMETER, NULL);
+    return (ecs_world_t*)&world->stages[stage_id];
+error:
+    return NULL;
+}
+
+bool ecs_readonly_begin(
+    ecs_world_t *world)
+{
+    ecs_poly_assert(world, ecs_world_t);
+
+    flecs_process_pending_tables(world);
+
+    ecs_dbg_3("#[bold]readonly");
+    ecs_log_push_3();
+
+    int32_t i, count = ecs_get_stage_count(world);
+    for (i = 0; i < count; i ++) {
+        ecs_stage_t *stage = &world->stages[i];
+        stage->lookup_path = world->stages[0].lookup_path;
+        ecs_assert(stage->defer == 0, ECS_INVALID_OPERATION, 
+            "deferred mode cannot be enabled when entering readonly mode");
+        flecs_defer_begin(world, stage);
+    }
+
+    bool is_readonly = ECS_BIT_IS_SET(world->flags, EcsWorldReadonly);
+
+    /* From this point on, the world is "locked" for mutations, and it is only 
+     * allowed to enqueue commands from stages */
+    ECS_BIT_SET(world->flags, EcsWorldReadonly);
+
+    /* If world has more than one stage, signal we might be running on multiple
+     * threads. This is a stricter version of readonly mode: while some 
+     * mutations like implicit component registration are still allowed in plain
+     * readonly mode, no mutations are allowed when multithreaded. */
+    if (world->worker_cond) {
+        ECS_BIT_SET(world->flags, EcsWorldMultiThreaded);
+    }
+
+    return is_readonly;
+}
+
+void ecs_readonly_end(
+    ecs_world_t *world)
+{
+    ecs_poly_assert(world, ecs_world_t);
+    ecs_check(world->flags & EcsWorldReadonly, ECS_INVALID_OPERATION, NULL);
+
+    /* After this it is safe again to mutate the world directly */
+    ECS_BIT_CLEAR(world->flags, EcsWorldReadonly);
+    ECS_BIT_CLEAR(world->flags, EcsWorldMultiThreaded);
+
+    ecs_log_pop_3();
+
+    flecs_stage_auto_merge(world);
+error:
+    return;
+}
+
+void ecs_merge(
+    ecs_world_t *world)
+{
+    ecs_check(world != NULL, ECS_INVALID_PARAMETER, NULL);
+    ecs_check(ecs_poly_is(world, ecs_world_t) || 
+               ecs_poly_is(world, ecs_stage_t), ECS_INVALID_PARAMETER, NULL);
+    flecs_stage_manual_merge(world);
+error:
+    return;
+}
+
+void ecs_set_automerge(
+    ecs_world_t *world,
+    bool auto_merge)
+{
+    /* If a world is provided, set auto_merge globally for the world. This
+     * doesn't actually do anything (the main stage never merges) but it serves
+     * as the default for when stages are created. */
+    if (ecs_poly_is(world, ecs_world_t)) {
+        world->stages[0].auto_merge = auto_merge;
+
+        /* Propagate change to all stages */
+        int i, stage_count = ecs_get_stage_count(world);
+        for (i = 0; i < stage_count; i ++) {
+            ecs_stage_t *stage = (ecs_stage_t*)ecs_get_stage(world, i);
+            stage->auto_merge = auto_merge;
+        }
+
+    /* If a stage is provided, override the auto_merge value for the individual
+     * stage. This allows an application to control per-stage which stage should
+     * be automatically merged and which one shouldn't */
+    } else {
+        ecs_poly_assert(world, ecs_stage_t);
+        ecs_stage_t *stage = (ecs_stage_t*)world;
+        stage->auto_merge = auto_merge;
+    }
+}
+
+bool ecs_stage_is_readonly(
+    const ecs_world_t *stage)
+{
+    const ecs_world_t *world = ecs_get_world(stage);
+
+    if (ecs_poly_is(stage, ecs_stage_t)) {
+        if (((const ecs_stage_t*)stage)->async) {
+            return false;
+        }
+    }
+
+    if (world->flags & EcsWorldReadonly) {
+        if (ecs_poly_is(stage, ecs_world_t)) {
+            return true;
+        }
+    } else {
+        if (ecs_poly_is(stage, ecs_stage_t)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+ecs_world_t* ecs_async_stage_new(
+    ecs_world_t *world)
+{
+    ecs_stage_t *stage = ecs_os_calloc(sizeof(ecs_stage_t));
+    flecs_stage_init(world, stage);
+
+    stage->id = -1;
+    stage->auto_merge = false;
+    stage->async = true;
+
+    flecs_defer_begin(world, stage);
+
+    return (ecs_world_t*)stage;
+}
+
+void ecs_async_stage_free(
+    ecs_world_t *world)
+{
+    ecs_poly_assert(world, ecs_stage_t);
+    ecs_stage_t *stage = (ecs_stage_t*)world;
+    ecs_check(stage->async == true, ECS_INVALID_PARAMETER, NULL);
+    flecs_stage_fini(stage->world, stage);
+    ecs_os_free(stage);
+error:
+    return;
+}
+
+bool ecs_stage_is_async(
+    ecs_world_t *stage)
+{
+    if (!stage) {
+        return false;
+    }
+    
+    if (!ecs_poly_is(stage, ecs_stage_t)) {
+        return false;
+    }
+
+    return ((ecs_stage_t*)stage)->async;
+}
+
+bool ecs_is_deferred(
+    const ecs_world_t *world)
+{
+    ecs_check(world != NULL, ECS_INVALID_PARAMETER, NULL);
+    const ecs_stage_t *stage = flecs_stage_from_readonly_world(world);
+    return stage->defer > 0;
+error:
+    return false;
+}

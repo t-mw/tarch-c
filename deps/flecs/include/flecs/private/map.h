@@ -1,27 +1,6 @@
 /**
  * @file map.h
- * @brief Map datastructure.
- *
- * Key-value datastructure. The map allows for fast retrieval of a payload for
- * a 64-bit key. While it is not as fast as the sparse set, it is better at
- * handling randomly distributed values.
- *
- * Payload is stored in bucket arrays. A bucket is computed from an id by
- * using the (bucket_count - 1) as an AND-mask. The number of buckets is always
- * a power of 2. Multiple keys will be stored in the same bucket. As a result
- * the worst case retrieval performance of the map is O(n), though this is rare.
- * On average lookup performance should equal O(1).
- *
- * The datastructure will automatically grow the number of buckets when the
- * ratio between elements and buckets exceeds a certain threshold (LOAD_FACTOR).
- *
- * Note that while the implementation is a hashmap, it can only compute hashes
- * for the provided 64 bit keys. This means that the provided keys must always
- * be unique. If the provided keys are hashes themselves, it is the
- * responsibility of the user to ensure that collisions are handled.
- *
- * In debug mode the map verifies that the type provided to the map functions
- * matches the one used at creation time.
+ * @brief Map data structure.
  */
 
 #ifndef FLECS_MAP_H
@@ -33,79 +12,136 @@
 extern "C" {
 #endif
 
-typedef struct ecs_map_t ecs_map_t;
-typedef struct ecs_bucket_t ecs_bucket_t;
-typedef uint64_t ecs_map_key_t;
+typedef uint64_t ecs_map_data_t;
+typedef ecs_map_data_t ecs_map_key_t;
+typedef ecs_map_data_t ecs_map_val_t;
+
+/* Map type */
+typedef struct ecs_bucket_entry_t {
+    ecs_map_key_t key;
+    ecs_map_val_t value;
+    struct ecs_bucket_entry_t *next;
+} ecs_bucket_entry_t;
+
+typedef struct ecs_bucket_t {
+    ecs_bucket_entry_t *first;
+} ecs_bucket_t;
+
+typedef struct ecs_map_t {
+    uint8_t bucket_shift;
+    bool shared_allocator;
+    ecs_bucket_t *buckets;
+    int32_t bucket_count;
+    int32_t count;
+    struct ecs_block_allocator_t *entry_allocator;
+    struct ecs_allocator_t *allocator;
+} ecs_map_t;
 
 typedef struct ecs_map_iter_t {
     const ecs_map_t *map;
     ecs_bucket_t *bucket;
-    int32_t bucket_index;
-    int32_t element_index;
-    void *payload;
+    ecs_bucket_entry_t *entry;
+    ecs_map_data_t *res;
 } ecs_map_iter_t;
 
-/** Create new map. */
-FLECS_API
-ecs_map_t * _ecs_map_new(
-    ecs_size_t elem_size,
-    ecs_size_t alignment,
-    int32_t elem_count);
+typedef struct ecs_map_params_t {
+    struct ecs_allocator_t *allocator;
+    struct ecs_block_allocator_t entry_allocator;
+} ecs_map_params_t;
 
-#define ecs_map_new(T, elem_count)\
-    _ecs_map_new(sizeof(T), ECS_ALIGNOF(T), elem_count)
+/* Function/macro postfixes meaning:
+ *   _ptr:    access ecs_map_val_t as void*
+ *   _ref:    access ecs_map_val_t* as T**
+ *   _deref:  dereferences a _ref
+ *   _alloc:  if _ptr is NULL, alloc
+ *   _free:   if _ptr is not NULL, free
+ */
+
+FLECS_API
+void ecs_map_params_init(
+    ecs_map_params_t *params,
+    struct ecs_allocator_t *allocator);
+
+FLECS_API
+void ecs_map_params_fini(
+    ecs_map_params_t *params);
+
+/** Initialize new map. */
+FLECS_API
+void ecs_map_init(
+    ecs_map_t *map,
+    struct ecs_allocator_t *allocator);
+
+/** Initialize new map. */
+FLECS_API
+void ecs_map_init_w_params(
+    ecs_map_t *map,
+    ecs_map_params_t *params);
+
+/** Initialize new map if uninitialized, leave as is otherwise */
+FLECS_API
+void ecs_map_init_if(
+    ecs_map_t *map,
+    struct ecs_allocator_t *allocator);
+
+FLECS_API
+void ecs_map_init_w_params_if(
+    ecs_map_t *result,
+    ecs_map_params_t *params);
+
+/** Deinitialize map. */
+FLECS_API
+void ecs_map_fini(
+    ecs_map_t *map);
 
 /** Get element for key, returns NULL if they key doesn't exist. */
 FLECS_API
-void * _ecs_map_get(
-    const ecs_map_t *map,
-    ecs_size_t elem_size,
-    ecs_map_key_t key);
-
-#define ecs_map_get(map, T, key)\
-    (T*)_ecs_map_get(map, sizeof(T), (ecs_map_key_t)key)
-
-/** Get pointer element. This dereferences the map element as a pointer. This
- * operation returns NULL when either the element does not exist or whether the
- * pointer is NULL, and should therefore only be used when the application knows
- * for sure that a pointer should never be NULL. */
-FLECS_API
-void * _ecs_map_get_ptr(
+ecs_map_val_t* ecs_map_get(
     const ecs_map_t *map,
     ecs_map_key_t key);
 
-#define ecs_map_get_ptr(map, T, key)\
-    (T)_ecs_map_get_ptr(map, key)
-
-/** Get or create element for key. */
+/* Get element as pointer (auto-dereferences _ptr) */
 FLECS_API
-void * _ecs_map_ensure(
+void* ecs_map_get_deref_(
+    const ecs_map_t *map,
+    ecs_map_key_t key);
+
+/** Get or insert element for key. */
+FLECS_API
+ecs_map_val_t* ecs_map_ensure(
+    ecs_map_t *map,
+    ecs_map_key_t key);
+
+/** Get or insert pointer element for key, allocate if the pointer is NULL */
+FLECS_API
+void* ecs_map_ensure_alloc(
     ecs_map_t *map,
     ecs_size_t elem_size,
     ecs_map_key_t key);
 
-#define ecs_map_ensure(map, T, key)\
-    (T*)_ecs_map_ensure(map, sizeof(T), (ecs_map_key_t)key)
-
-/** Set element. */
+/** Insert element for key. */
 FLECS_API
-void* _ecs_map_set(
+void ecs_map_insert(
     ecs_map_t *map,
-    ecs_size_t elem_size,
     ecs_map_key_t key,
-    const void *payload);
+    ecs_map_val_t value);
 
-#define ecs_map_set(map, key, payload)\
-    _ecs_map_set(map, sizeof(*payload), (ecs_map_key_t)key, payload);
-
-/** Free map. */
+/** Insert pointer element for key, populate with new allocation. */
 FLECS_API
-void ecs_map_free(
-    ecs_map_t *map);
+void* ecs_map_insert_alloc(
+    ecs_map_t *map,
+    ecs_size_t elem_size,
+    ecs_map_key_t key);
 
 /** Remove key from map. */
 FLECS_API
-void ecs_map_remove(
+ecs_map_val_t ecs_map_remove(
+    ecs_map_t *map,
+    ecs_map_key_t key);
+
+/* Remove pointer element, free if not NULL */
+FLECS_API
+void ecs_map_remove_free(
     ecs_map_t *map,
     ecs_map_key_t key);
 
@@ -115,14 +151,10 @@ void ecs_map_clear(
     ecs_map_t *map);
 
 /** Return number of elements in map. */
-FLECS_API
-int32_t ecs_map_count(
-    const ecs_map_t *map);
+#define ecs_map_count(map) ((map) ? (map)->count : 0)
 
-/** Return number of buckets in map. */
-FLECS_API
-int32_t ecs_map_bucket_count(
-    const ecs_map_t *map);
+/** Is map initialized */
+#define ecs_map_is_init(map) ((map) ? (map)->bucket_shift != 0 : false)
 
 /** Return iterator to map contents. */
 FLECS_API
@@ -131,113 +163,31 @@ ecs_map_iter_t ecs_map_iter(
 
 /** Obtain next element in map from iterator. */
 FLECS_API
-void* _ecs_map_next(
-    ecs_map_iter_t* iter,
-    ecs_size_t elem_size,
-    ecs_map_key_t *key);
+bool ecs_map_next(
+    ecs_map_iter_t *iter);
 
-#define ecs_map_next(iter, T, key) \
-    (T*)_ecs_map_next(iter, sizeof(T), key)
-
-/** Obtain next pointer element from iterator. See ecs_map_get_ptr. */
+/** Copy map. */
 FLECS_API
-void* _ecs_map_next_ptr(
-    ecs_map_iter_t* iter,
-    ecs_map_key_t *key);
+void ecs_map_copy(
+    ecs_map_t *dst,
+    const ecs_map_t *src);
 
-#define ecs_map_next_ptr(iter, T, key) \
-    (T)_ecs_map_next_ptr(iter, key)
+#define ecs_map_get_ref(m, T, k) ECS_CAST(T**, ecs_map_get(m, k))
+#define ecs_map_get_deref(m, T, k) ECS_CAST(T*, ecs_map_get_deref_(m, k))
+#define ecs_map_ensure_ref(m, T, k) ECS_CAST(T**, ecs_map_ensure(m, k))
 
-/** Grow number of buckets in the map for specified number of elements. */
-FLECS_API
-void ecs_map_grow(
-    ecs_map_t *map,
-    int32_t elem_count);
+#define ecs_map_insert_ptr(m, k, v) ecs_map_insert(m, k, ECS_CAST(ecs_map_val_t, ECS_PTR_CAST(uintptr_t, v)))
+#define ecs_map_insert_alloc_t(m, T, k) ECS_CAST(T*, ecs_map_insert_alloc(m, ECS_SIZEOF(T), k))
+#define ecs_map_ensure_alloc_t(m, T, k) ECS_PTR_CAST(T*, (uintptr_t)ecs_map_ensure_alloc(m, ECS_SIZEOF(T), k))
+#define ecs_map_remove_ptr(m, k) (ECS_PTR_CAST(void*, ECS_CAST(uintptr_t, (ecs_map_remove(m, k)))))
 
-/** Set number of buckets in the map for specified number of elements. */
-FLECS_API
-void ecs_map_set_size(
-    ecs_map_t *map,
-    int32_t elem_count);
+#define ecs_map_key(it) ((it)->res[0])
+#define ecs_map_value(it) ((it)->res[1])
+#define ecs_map_ptr(it) ECS_PTR_CAST(void*, ECS_CAST(uintptr_t, ecs_map_value(it)))
+#define ecs_map_ref(it, T) (ECS_CAST(T**, &((it)->res[1])))
 
-/** Return memory occupied by map. */
-FLECS_API
-void ecs_map_memory(
-    ecs_map_t *map,
-    int32_t *allocd,
-    int32_t *used);
-
-#ifndef FLECS_LEGACY
-#define ecs_map_each(map, T, key, var, ...)\
-    {\
-        ecs_map_iter_t it = ecs_map_iter(map);\
-        ecs_map_key_t key;\
-        T* var;\
-        (void)key;\
-        (void)var;\
-        while ((var = ecs_map_next(&it, T, &key))) {\
-            __VA_ARGS__\
-        }\
-    }
-#endif
 #ifdef __cplusplus
 }
-#endif
-
-/** C++ wrapper for map. */
-#ifdef __cplusplus
-#ifndef FLECS_NO_CPP
-
-#include <initializer_list>
-#include <utility>
-
-namespace flecs {
-
-template <typename K, typename T>
-class map {
-public:
-    map(int32_t count = 0) {
-        init(count);
-    }
-
-    map(std::initializer_list<std::pair<K, T>> elems) {
-        init(elems.size());
-        *this = elems;
-    }
-
-    void operator=(std::initializer_list<std::pair<K, T>> elems) {
-        for (auto elem : elems) {
-            this->set(elem.first, elem.second);
-        }
-    }
-
-    void clear() {
-        ecs_map_clear(m_map);
-    }
-
-    int32_t count() {
-        return ecs_map_count(m_map);
-    }
-
-    void set(K& key, T& value) {
-        ecs_map_set(m_map, reinterpret_cast<ecs_map_key_t>(key), &value);
-    }
-
-    T& get(K& key) {
-        *(T*)ecs_map_get(m_map, T, reinterpret_cast<ecs_map_key_t>(key));
-    }
-
-private:
-    void init(int32_t count) {
-        m_map = ecs_map_new(T, count);
-    }
-
-    ecs_map_t *m_map;
-};
-
-}
-
-#endif
 #endif
 
 #endif

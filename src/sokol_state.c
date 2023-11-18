@@ -8,9 +8,9 @@
 void sokol_state_init(struct SokolState* state) {
     struct sg_pipeline pipeline = sg_make_pipeline(&(sg_pipeline_desc){
         .shader = sg_make_shader(basic_shader_desc(sg_query_backend())),
-        .layout =
-            {.buffers[0] = sshape_buffer_layout_desc(),
-             .attrs = {[ATTR_basic_vs_position] = sshape_position_attr_desc(), [ATTR_basic_vs_color0] = sshape_color_attr_desc()}},
+        .layout = {.buffers[0] = sshape_vertex_buffer_layout_state(),
+                   .attrs = {[ATTR_basic_vs_position] = sshape_position_vertex_attr_state(),
+                             [ATTR_basic_vs_color0] = sshape_color_vertex_attr_state()}},
         .index_type = SG_INDEXTYPE_UINT16,
         .cull_mode = SG_CULLMODE_NONE,
         .depth = {.compare = SG_COMPAREFUNC_LESS_EQUAL, .write_enabled = true},

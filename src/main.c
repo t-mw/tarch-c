@@ -33,8 +33,8 @@ static void init(void) {
     stm_setup();
     sg_setup(&(sg_desc){.context = sapp_sgcontext(),
                         .allocator = {
-                            .alloc = tarch_malloc,
-                            .free = tarch_free,
+                            .alloc_fn = tarch_malloc,
+                            .free_fn = tarch_free,
                         }});
 
     host_state = host_state_create(sx_alloc_malloc());

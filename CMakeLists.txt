@@ -26,16 +26,15 @@ if (ENABLE_HOTRELOAD)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif ()
 
+find_package(SDL2 REQUIRED)
+include_directories(${SDL2_INCLUDE_DIRS})
+
+find_package(OpenGL REQUIRED)
+
 option(SX_BUILD_TESTS "" OFF)
 add_subdirectory(deps/sx)
 
-if (CMAKE_SYSTEM_NAME STREQUAL Windows)
-    set(sokol_backend SOKOL_D3D11)
-    set(sokol_slang "hlsl4")
-elseif (CMAKE_SYSTEM_NAME STREQUAL Darwin)
-    set(sokol_backend SOKOL_METAL)
-    set(sokol_slang "metal_macos")
-elseif (CMAKE_SYSTEM_NAME STREQUAL Emscripten)
+if (CMAKE_SYSTEM_NAME STREQUAL Emscripten)
     set(sokol_backend SOKOL_GLES3)
     set(sokol_slang "glsl300es:glsl100")
 else ()
@@ -100,13 +99,12 @@ else ()
 endif ()
 
 file(GLOB_RECURSE C_SOURCES src/*.c)
-list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/dummy_main\\.c")
 
-set(DEPS sx sokol stb tarch flecs_static)
+set(DEPS sx sokol stb tarch flecs_static ${SDL2_LIBRARIES} ${OPENGL_LIBRARIES})
 if (ENABLE_HOTRELOAD)
   list(FILTER C_SOURCES EXCLUDE REGEX ".*\\/main\\.c")
 
-  add_library(game_tmp MODULE ${C_SOURCES} src/dummy_main.c)
+  add_library(game_tmp MODULE ${C_SOURCES})
   target_link_libraries(game_tmp PRIVATE ${DEPS})
 
   # rename at end of build to prevent hot reload from loading partially built library

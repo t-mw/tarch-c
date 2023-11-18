@@ -1,6 +1,5 @@
 #include "sokol_state.h"
 
-#include <sokol/sokol_app.h>
 #include <sx/math-vec.h>
 #include <sx/sx.h>
 #include <tarch/tarch.h>
@@ -53,10 +52,13 @@ void sokol_state_init(struct SokolState* state) {
     state->ry = 0.0f;
 }
 
-void sokol_state_draw(struct SokolState* state) {
+void sokol_state_draw(struct SokolState* state, struct DrawArgs const* args) {
     sx_unused(state);
 
-    sx_mat4 proj = sx_mat4_perspectiveFOV(SX_PI / 3.0f, sapp_widthf() / sapp_heightf(), 0.01f, 10.0f, true);
+    int window_width = args->window_width;
+    int window_height = args->window_height;
+
+    sx_mat4 proj = sx_mat4_perspectiveFOV(SX_PI / 3.0f, (float)window_width / (float)window_height, 0.01f, 10.0f, true);
     sx_mat4 view = sx_mat4_view_lookat(sx_vec3f(0.0f, 1.5f, 6.0f), sx_vec3f(0.0f, 0.0f, 0.0f), sx_vec3f(0.0f, 1.0f, 0.0f));
     sx_mat4 view_proj = sx_mat4_mul(&proj, &view);
 
@@ -68,11 +70,9 @@ void sokol_state_draw(struct SokolState* state) {
 
     memcpy(&state->vs_params.mvp, &view_proj.f, sizeof(state->vs_params.mvp));
 
-    int const canvas_width = sapp_width();
-    int const canvas_height = sapp_height();
     struct sg_pass_action pass_action = {.colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0.0f, 0.0f, 0.0f, 1.0f}}};
 
-    sg_begin_default_pass(&pass_action, canvas_width, canvas_height);
+    sg_begin_default_pass(&pass_action, window_width, window_height);
     sg_apply_pipeline(state->pipeline);
     sg_apply_bindings(&(sg_bindings){.vertex_buffers[0] = state->vbuf, .index_buffer = state->ibuf});
     sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_basic_vs_params, &SG_RANGE(state->vs_params));

@@ -2,7 +2,6 @@
 #include "tarch/game_api.h"
 #include "tarch/host_state.h"
 
-#include <sokol/sokol_app.h>
 #include <sokol/sokol_audio.h>
 #include <sokol/sokol_gfx.h>
 #include <sokol/sokol_glue.h>
@@ -37,7 +36,11 @@ static void game_state_handle_event(sx_alloc const* alloc, struct GameState* sta
         state->sokol_state.rx += event.dt * 0.6f;
         state->sokol_state.ry += event.dt * 1.2f;
     } else if (strcmp(event.type, "draw") == 0) {
-        sokol_state_draw(&state->sokol_state);
+        struct DrawArgs args = {
+            .window_width = event.window_width,
+            .window_height = event.window_height,
+        };
+        sokol_state_draw(&state->sokol_state, &args);
     }
 }
 

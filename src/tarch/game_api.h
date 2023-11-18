@@ -10,6 +10,8 @@ struct HostState;
 struct Event {
     char* type;
     double dt;
+    int window_width;
+    int window_height;
 };
 
 struct GameApi {

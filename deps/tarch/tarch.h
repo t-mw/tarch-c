@@ -58,7 +58,9 @@
 #define DBG_LOG(tag, ...)
 #endif
 
-void* tarch_malloc(size_t size, void* user_data);
-void* tarch_calloc(size_t n, size_t s, void* user_data);
-void* tarch_realloc(void* p, size_t s, void* user_data);
-void tarch_free(void* ptr, void* user_data);
+void* tarch_malloc(size_t size);
+void* tarch_calloc(size_t n, size_t s);
+void* tarch_realloc(void* p, size_t s);
+void tarch_free(void* ptr);
+
+#define tarch_unused(_v) (void)(_v)

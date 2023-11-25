@@ -2,33 +2,25 @@
 #include "runner/host_state.h"
 
 #include <raylib.h>
-#include <sokol/sokol_audio.h>
-#include <sokol/sokol_gfx.h>
-#include <sokol/sokol_glue.h>
-#include <sokol/sokol_time.h>
-#include <sx/sx.h>
 #include <tarch/tarch.h>
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 struct GameState {
     float rotation;
 };
 
-static void game_state_init(sx_alloc const* alloc, struct GameState* state) {
-    sx_unused(alloc);
+static void game_state_init(struct GameState* state) {
     state->rotation = 0.0;
 }
 
-static void game_state_discard(sx_alloc const* alloc, struct GameState* state) {
-    sx_unused(alloc);
-    sx_unused(state);
+static void game_state_discard(struct GameState* state) {
+    tarch_unused(state);
 }
 
-static void game_state_handle_event(sx_alloc const* alloc, struct GameState* state, struct Event event) {
-    sx_unused(alloc);
-
+static void game_state_handle_event(struct GameState* state, struct Event event) {
     float dt = GetFrameTime();
     if (strcmp(event.type, "update") == 0) {
         state->rotation += dt * 0.7f;
@@ -47,39 +39,36 @@ static void game_state_handle_event(sx_alloc const* alloc, struct GameState* sta
     }
 }
 
-static struct GameState* game_create(sx_alloc const* alloc, struct HostState* host_state) {
-    sx_unused(alloc);
-    sx_unused(host_state);
+static struct GameState* game_create(struct HostState* host_state) {
+    tarch_unused(host_state);
 
-    struct GameState* state = sx_calloc(alloc, sizeof(*state));
-    game_state_init(alloc, state);
+    struct GameState* state = tarch_calloc(1, sizeof(*state));
+    game_state_init(state);
     return state;
 }
 
-static void game_destroy(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state) {
-    sx_unused(host_state);
+static void game_destroy(struct GameState* state, struct HostState* host_state) {
+    tarch_unused(host_state);
 
-    game_state_discard(alloc, state);
-    sx_free(alloc, state);
+    game_state_discard(state);
+    tarch_free(state);
 }
 
-static void game_reload(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state) {
-    sx_unused(alloc);
-    sx_unused(state);
-    sx_unused(host_state);
+static void game_reload(struct GameState* state, struct HostState* host_state) {
+    tarch_unused(state);
+    tarch_unused(host_state);
 }
 
-static void game_unload(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state) {
-    sx_unused(alloc);
-    sx_unused(state);
-    sx_unused(host_state);
+static void game_unload(struct GameState* state, struct HostState* host_state) {
+    tarch_unused(state);
+    tarch_unused(host_state);
 }
 
-static bool game_handle_event(sx_alloc const* alloc, struct GameState* state, struct HostState* host_state, struct Event event) {
-    sx_unused(host_state);
+static bool game_handle_event(struct GameState* state, struct HostState* host_state, struct Event event) {
+    tarch_unused(host_state);
 
     DBG_LOG("game_state", "Handling event: %s", event.type);
-    game_state_handle_event(alloc, state, event);
+    game_state_handle_event(state, event);
 
     return true;
 }

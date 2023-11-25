@@ -1,7 +1,7 @@
-#include "sokol_state.h"
-#include "tarch/game_api.h"
-#include "tarch/host_state.h"
+#include "runner/game_api.h"
+#include "runner/host_state.h"
 
+#include <raylib.h>
 #include <sokol/sokol_audio.h>
 #include <sokol/sokol_gfx.h>
 #include <sokol/sokol_glue.h>
@@ -9,16 +9,16 @@
 #include <sx/sx.h>
 #include <tarch/tarch.h>
 
+#include <math.h>
 #include <stdio.h>
 
 struct GameState {
-    bool is_sokol_initialized;
-    struct SokolState sokol_state;
+    float rotation;
 };
 
 static void game_state_init(sx_alloc const* alloc, struct GameState* state) {
     sx_unused(alloc);
-    state->is_sokol_initialized = false;
+    state->rotation = 0.0;
 }
 
 static void game_state_discard(sx_alloc const* alloc, struct GameState* state) {
@@ -29,18 +29,21 @@ static void game_state_discard(sx_alloc const* alloc, struct GameState* state) {
 static void game_state_handle_event(sx_alloc const* alloc, struct GameState* state, struct Event event) {
     sx_unused(alloc);
 
-    if (strcmp(event.type, "init_draw") == 0 && !state->is_sokol_initialized) {
-        sokol_state_init(&state->sokol_state);
-        state->is_sokol_initialized = true;
-    } else if (strcmp(event.type, "update") == 0) {
-        state->sokol_state.rx += event.dt * 0.6f;
-        state->sokol_state.ry += event.dt * 1.2f;
-    } else if (strcmp(event.type, "draw") == 0) {
-        struct DrawArgs args = {
-            .window_width = event.window_width,
-            .window_height = event.window_height,
-        };
-        sokol_state_draw(&state->sokol_state, &args);
+    float dt = GetFrameTime();
+    if (strcmp(event.type, "update") == 0) {
+        state->rotation += dt * 0.7f;
+
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+        BeginMode3D((Camera3D){
+            .position = {sinf(state->rotation) * 10.0f, 10.0f, cosf(state->rotation) * 10.0f},
+            .target = {0.0f, 0.0f, 0.0f},
+            .up = {0.0f, 1.0f, 0.0f},
+            .fovy = 45.0f,
+        });
+        DrawCube((Vector3){0.0f, 0.0f, 0.0f}, 2.0f, 2.0f, 2.0f, RED);
+        EndMode3D();
+        EndDrawing();
     }
 }
 

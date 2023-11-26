@@ -17,7 +17,7 @@ static void game_state_init(struct GameState* state) {
 }
 
 static void game_state_discard(struct GameState* state) {
-    tarch_unused(state);
+    tm_unused(state);
 }
 
 static void game_state_handle_event(struct GameState* state, struct Event event) {
@@ -40,32 +40,32 @@ static void game_state_handle_event(struct GameState* state, struct Event event)
 }
 
 static struct GameState* game_create(struct HostState* host_state) {
-    tarch_unused(host_state);
+    tm_unused(host_state);
 
-    struct GameState* state = tarch_calloc(1, sizeof(*state));
+    struct GameState* state = tm_calloc(1, sizeof(*state));
     game_state_init(state);
     return state;
 }
 
 static void game_destroy(struct GameState* state, struct HostState* host_state) {
-    tarch_unused(host_state);
+    tm_unused(host_state);
 
     game_state_discard(state);
-    tarch_free(state);
+    tm_free(state);
 }
 
 static void game_reload(struct GameState* state, struct HostState* host_state) {
-    tarch_unused(state);
-    tarch_unused(host_state);
+    tm_unused(state);
+    tm_unused(host_state);
 }
 
 static void game_unload(struct GameState* state, struct HostState* host_state) {
-    tarch_unused(state);
-    tarch_unused(host_state);
+    tm_unused(state);
+    tm_unused(host_state);
 }
 
 static bool game_handle_event(struct GameState* state, struct HostState* host_state, struct Event event) {
-    tarch_unused(host_state);
+    tm_unused(host_state);
 
     DBG_LOG("game_state", "Handling event: %s", event.type);
     game_state_handle_event(state, event);

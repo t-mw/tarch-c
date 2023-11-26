@@ -18,7 +18,7 @@ struct EventArgs {
 };
 
 int main(int argc, char** argv) {
-    tarch_unused(argc);
+    tm_unused(argc);
 
     g_exe_path = argv[0];
 

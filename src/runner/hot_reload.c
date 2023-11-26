@@ -21,9 +21,9 @@ struct GameState* hot_reload_context_get_game_state(struct HotReloadContext* con
 }
 
 struct HotReloadContext* hot_reload_context_create(struct HostState* host_state) {
-    struct HotReloadContext* context = tarch_calloc(1, sizeof(struct HotReloadContext));
+    struct HotReloadContext* context = tm_calloc(1, sizeof(struct HotReloadContext));
 #if ENABLE_HOTRELOAD
-    tarch_unused(host_state);
+    tm_unused(host_state);
 #else
     context->api = GAME_API;
     context->state = GAME_API.create(host_state);
@@ -48,7 +48,7 @@ void hot_reload_context_destroy(struct HotReloadContext* context, struct HostSta
     context->api.destroy(context->state, host_state);
     context->state = NULL;
 #endif
-    tarch_free(context);
+    tm_free(context);
 }
 
 /* http://nullprogram.com/blog/2014/12/23/ */
@@ -101,8 +101,8 @@ void hot_reload(struct HotReloadContext* context, struct HostState* host_state, 
         }
     }
 #else
-    tarch_unused(context);
-    tarch_unused(host_state);
-    tarch_unused(exe_path);
+    tm_unused(context);
+    tm_unused(host_state);
+    tm_unused(exe_path);
 #endif
 }

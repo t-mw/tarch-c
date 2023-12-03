@@ -31,6 +31,8 @@ set(BUILD_GAMES    OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory(deps/raylib)
 
+add_library(raymath STATIC deps/raymath.c)
+
 option(SX_BUILD_TESTS "" OFF)
 add_subdirectory(deps/sx)
 
@@ -93,3 +95,5 @@ else ()
   endif ()
 endif ()
 target_link_libraries(runner PRIVATE ${DEPS})
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC ASSETS_DIR="./assets/")

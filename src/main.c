@@ -24,11 +24,11 @@ int main(int argc, char** argv) {
 
     DBG_LOG("main", "Initializing app");
 
-    host_state = host_state_create();
-    hot_reload_context = hot_reload_context_create(host_state);
-
     InitWindow(640, 480, "example");
     SetTargetFPS(60);
+
+    host_state = host_state_create();
+    hot_reload_context = hot_reload_context_create(host_state);
 
     while (!WindowShouldClose()) {
         hot_reload(hot_reload_context, host_state, g_exe_path);

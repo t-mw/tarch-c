@@ -5,9 +5,9 @@
 #define defer(x) __attribute__((cleanup(x)))
 
 #ifndef NDEBUG
-#define DBG 1
+#define DEBUG 1
 #else
-#define DBG 0
+#define DEBUG 0
 #endif
 
 #define PRINT_ARR(format, arr)                                    \
@@ -52,10 +52,10 @@
         }                                                                          \
     } while (0)
 
-#if DBG
-#define DBG_LOG(tag, ...) LOG("debug:" tag, __VA_ARGS__)
+#if DEBUG
+#define DEBUG_LOG(tag, ...) LOG("debug:" tag, __VA_ARGS__)
 #else
-#define DBG_LOG(tag, ...)
+#define DEBUG_LOG(tag, ...)
 #endif
 
 void* tm_malloc(size_t size);

@@ -87,7 +87,7 @@ void hot_reload(struct HotReloadContext* context, struct HostState* host_state, 
                     context->state = context->api.create(host_state);
                 }
 
-                DBG_LOG("hot_reload", "Reloading library");
+                DEBUG_LOG("hot_reload", "Reloading library");
                 context->api.reload(context->state, host_state);
             } else {
                 dlclose(context->handle);

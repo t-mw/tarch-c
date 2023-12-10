@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
 
     g_exe_path = argv[0];
 
-    DBG_LOG("main", "Initializing app");
+    DEBUG_LOG("main", "Initializing app");
 
     InitWindow(640, 480, "example");
     SetTargetFPS(60);
@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    DBG_LOG("main", "Exiting app");
+    DEBUG_LOG("main", "Exiting app");
 
     hot_reload_context_destroy(hot_reload_context, host_state);
     hot_reload_context = NULL;

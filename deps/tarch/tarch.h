@@ -22,7 +22,7 @@
 #define LOG_MAX_MSG_LEN 256
 #define LOG_MAX_TIME_LEN 32
 
-#define LOG(tag, ...)                                                              \
+#define log(tag, ...)                                                              \
     do {                                                                           \
         char formatted_msg[LOG_MAX_MSG_LEN];                                       \
         char time_str[LOG_MAX_TIME_LEN];                                           \
@@ -42,7 +42,7 @@
             perror("snprintf");                                                    \
             break;                                                                 \
         } else if (ret >= (int)sizeof(formatted_msg)) {                            \
-            fprintf(stderr, "LOG message too long for buffer\n");                  \
+            fprintf(stderr, "log message too long for buffer\n");                  \
             break;                                                                 \
         }                                                                          \
                                                                                    \
@@ -53,9 +53,9 @@
     } while (0)
 
 #if DEBUG
-#define DEBUG_LOG(tag, ...) LOG("debug:" tag, __VA_ARGS__)
+#define debug_log(tag, ...) log("debug:" tag, __VA_ARGS__)
 #else
-#define DEBUG_LOG(tag, ...)
+#define debug_log(tag, ...)
 #endif
 
 void* tm_malloc(size_t size);

@@ -91,7 +91,7 @@ static void game_unload(struct GameState* state, struct HostState* host_state) {
 static bool game_handle_event(struct GameState* state, struct HostState* host_state, struct Event event) {
     tm_unused(host_state);
 
-    debug_log("game_state", "Handling event: %s", event.type);
+    tm_debug_log("game_state", "Handling event: %s", event.type);
     game_state_handle_event(state, event);
 
     return true;

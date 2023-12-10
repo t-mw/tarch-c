@@ -22,7 +22,7 @@
 #define LOG_MAX_MSG_LEN 256
 #define LOG_MAX_TIME_LEN 32
 
-#define log(tag, ...)                                                              \
+#define tm_log(tag, ...)                                                           \
     do {                                                                           \
         char formatted_msg[LOG_MAX_MSG_LEN];                                       \
         char time_str[LOG_MAX_TIME_LEN];                                           \
@@ -53,9 +53,9 @@
     } while (0)
 
 #if DEBUG
-#define debug_log(tag, ...) log("debug:" tag, __VA_ARGS__)
+#define tm_debug_log(tag, ...) tm_log("debug:" tag, __VA_ARGS__)
 #else
-#define debug_log(tag, ...)
+#define tm_debug_log(tag, ...)
 #endif
 
 static inline void _tm_print_char(char v) {

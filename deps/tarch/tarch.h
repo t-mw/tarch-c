@@ -64,3 +64,7 @@ void* tm_realloc(void* p, size_t s);
 void tm_free(void* ptr);
 
 #define tm_unused(_v) (void)(_v)
+
+static inline void tm_noop(void* v) {
+    tm_unused(v);
+}

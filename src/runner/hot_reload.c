@@ -87,7 +87,7 @@ void hot_reload(struct HotReloadContext* context, struct HostState* host_state, 
                     context->state = context->api.create(host_state);
                 }
 
-                debug_log("hot_reload", "Reloading library");
+                tm_debug_log("hot_reload", "Reloading library");
                 context->api.reload(context->state, host_state);
             } else {
                 dlclose(context->handle);
